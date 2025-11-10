@@ -1,0 +1,82 @@
+name: registro_horario
+
+services:
+  api:
+    build: .
+    container_name: registro_horario-api
+    restart: always
+    depends_on:
+      db_registro:
+        condition: service_healthy   # ✅ Espera a que la BD esté lista
+    environment:
+      DATABASE_URL: postgresql://postgres:password123@db_registro:5432/registro_horario
+    ports:
+      - "8000:8000"
+    networks:
+      - app_net
+    healthcheck:                      # 🩺 Comprueba que la API esté viva
+      test: ["CMD-SHELL", "curl -f http://localhost:8000 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  db_registro:
+    image: postgres:15
+    container_name: registro_horario-db_registro
+    restart: always
+    environment:
+      POSTGRES_DB: registro_horario
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password123
+    ports:
+      - "5440:5432"
+    volumes:
+      - postgres_registro_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - app_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  n8n:
+    image: n8nio/n8n
+    container_name: n8n
+    restart: always
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=123456
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=db_registro
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=registro_horario
+      - DB_POSTGRESDB_USER=postgres
+      - DB_POSTGRESDB_PASSWORD=password123
+      - N8N_USER_MANAGEMENT_DISABLED=true
+      - GENERIC_TIMEZONE=Europe/Madrid
+      # ⚙️ Seguridad y compatibilidad
+      - N8N_ENCRYPTION_KEY=cfbe89e3e9e94a4bb3b66c8e76fd213d
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+      - N8N_RUNNERS_ENABLED=true
+      - N8N_GIT_NODE_DISABLE_BARE_REPOS=true
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+    ports:
+      - "5678:5678"
+    networks:
+      - app_net
+    depends_on:
+      - db_registro
+    volumes:
+      - ./n8n_data:/home/node/.n8n
+
+volumes:
+  postgres_registro_data:
+
+networks:
+  app_net:
+    driver: bridge

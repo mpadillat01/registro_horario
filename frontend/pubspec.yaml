@@ -1,0 +1,36 @@
+name: registro_horario
+description: "Registro horario para empresas y empleados"
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # ✅ Llamadas a la API REST
+  http: ^1.2.2
+
+  # ✅ Manejo de estado para login, empresa, empleados...
+  provider: ^6.1.2
+
+  # ✅ Guardar token JWT y datos del usuario
+  shared_preferences: ^2.2.3
+
+  # ✅ Fechas / formatos (día, hora, locale español)
+  intl: ^0.19.0
+  # ✅ Variables de entorno (.env) para API_URL
+  flutter_dotenv: ^5.1.0
+  geolocator: ^10.0.0
+  flutter_secure_storage: ^9.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+
