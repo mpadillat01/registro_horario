@@ -2,8 +2,11 @@ import 'package:intl/intl.dart';
 
 class FichajeUtils {
   /// Verifica si dos fechas son del mismo día
-  static bool isSameDay(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
+  static bool isSameDay(DateTime a, DateTime b) {
+    final al = a.toLocal();
+    final bl = b.toLocal();
+    return al.year == bl.year && al.month == bl.month && al.day == bl.day;
+  }
 
   /// Convierte correctamente UTC → hora local
   static DateTime parseUtcToLocal(String fecha) {
@@ -37,8 +40,16 @@ class FichajeUtils {
     List<Map<String, dynamic>> historial,
     DateTime dia,
   ) {
-    final eventos = historial.where((e) => isSameDay(e["dt"], dia)).toList()
-      ..sort((a, b) => a["dt"].compareTo(b["dt"]));
+    final diaLocal = dia.toLocal();
+    final eventos =
+        historial
+            .where((e) => isSameDay((e["dt"] as DateTime).toLocal(), diaLocal))
+            .toList()
+          ..sort(
+            (a, b) => (a["dt"] as DateTime).toLocal().compareTo(
+              (b["dt"] as DateTime).toLocal(),
+            ),
+          );
 
     Duration acumulado = Duration.zero;
     DateTime? ultimaEntrada;
@@ -46,7 +57,7 @@ class FichajeUtils {
 
     for (final e in eventos) {
       final tipo = e["tipo"];
-      final dt = e["dt"] as DateTime;
+      final dt = (e["dt"] as DateTime).toLocal();
 
       if (tipo == "entrada") {
         ultimaEntrada = dt;
@@ -64,7 +75,7 @@ class FichajeUtils {
     }
 
     if (ultimaEntrada != null && ultimaPausa == null) {
-      acumulado += DateTime.now().difference(ultimaEntrada);
+      acumulado += DateTime.now().toLocal().difference(ultimaEntrada);
     }
 
     return acumulado;
@@ -119,12 +130,18 @@ class FichajeUtils {
   /// Formatea fecha corta
   static String formatFecha(DateTime d) => DateFormat("dd/MM HH:mm").format(d);
 
-  static Map<DateTime, Duration> calcularSemana(List<Map<String, dynamic>> historial) {
+  static Map<DateTime, Duration> calcularSemana(
+    List<Map<String, dynamic>> historial,
+  ) {
     final now = DateTime.now();
     final resultado = <DateTime, Duration>{};
 
     for (int i = 0; i < 7; i++) {
-      final d = DateTime(now.year, now.month, now.day).subtract(Duration(days: 6 - i));
+      final d = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).subtract(Duration(days: 6 - i));
       resultado[d] = calcularDuracionDia(historial, d);
     }
 

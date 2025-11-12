@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:registro_horario/services/usuario_service.dart';
 import 'package:registro_horario/theme_provider.dart';
+import 'package:registro_horario/utils/fichaje_utils.dart';
 
 class EmpleadoDetallePage extends StatefulWidget {
   final Map empleado;
@@ -14,353 +16,435 @@ class EmpleadoDetallePage extends StatefulWidget {
 }
 
 class _EmpleadoDetallePageState extends State<EmpleadoDetallePage> {
-  List horas = [];
-  bool loading = true;
+  bool cargando = true;
+  Timer? timer;
+  List<Map<String, dynamic>> historial = [];
 
-  Timer? _timer;
+  double horasHoy = 0, horasTotales = 0, horasPromedio = 0;
+  String estado = "fuera";
+  DateTime? entradaActual;
 
   @override
   void initState() {
     super.initState();
-    cargar();
-
-    // ⏱️ refrescar cada segundo para contar horas en vivo
-    _timer = Timer.periodic(const Duration(seconds: 30), (_) async {
-      await EmpleadoService.cargarEstadoActual(widget.empleado["id"]);
-      if (mounted) setState(() {});
-    });
+    _cargarDatos();
+    timer = Timer.periodic(const Duration(minutes: 1), (_) => _cargarDatos());
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    timer?.cancel();
     super.dispose();
   }
 
-  Future<void> cargar() async {
-    await EmpleadoService.cargarEstadoActual(widget.empleado["id"]);
-    final data = await EmpleadoService.getHorasEmpleado(widget.empleado["id"]);
-    setState(() {
-      horas = data;
-      loading = false;
-    });
+  Future<void> _cargarDatos() async {
+    try {
+      print("🔄 Cargando estado y horas del empleado ${widget.empleado["id"]}");
+
+      await EmpleadoService.cargarEstadoActual(widget.empleado["id"]);
+
+      // 1️⃣ Intentamos primero obtener las horas diarias ya calculadas (si existen)
+      final data = await EmpleadoService.getHorasEmpleado(
+        widget.empleado["id"],
+      );
+      print("📊 Datos recibidos: $data");
+
+      // 2️⃣ Si el endpoint devuelve vacío o solo el día actual → reconstruimos desde los fichajes
+      if (data == null || data.isEmpty || data.length <= 1) {
+        print("⚠️ Datos insuficientes, reconstruyendo desde fichajes...");
+
+        final fichajes = await EmpleadoService.getHistorialEmpleado(
+          widget.empleado["id"],
+        );
+
+        print("📜 Total fichajes encontrados: ${fichajes.length}");
+
+        final Map<String, double> horasPorDia = {};
+
+        for (var f in fichajes) {
+          final entradaStr = f["entrada"] ?? f["fecha_entrada"];
+          final salidaStr = f["salida"] ?? f["fecha_salida"];
+          if (entradaStr == null || salidaStr == null) continue;
+
+          final entrada = DateTime.parse(entradaStr).toLocal();
+          final salida = DateTime.parse(salidaStr).toLocal();
+          final diff = salida.difference(entrada).inMinutes / 60.0;
+
+          final fechaKey = DateFormat('yyyy-MM-dd').format(entrada);
+          horasPorDia[fechaKey] = (horasPorDia[fechaKey] ?? 0) + diff;
+        }
+
+        historial =
+            horasPorDia.entries.map((e) {
+              return {"fecha": e.key, "horas": e.value};
+            }).toList()..sort((a, b) {
+              final fechaA = DateTime.parse(a["fecha"] as String);
+              final fechaB = DateTime.parse(b["fecha"] as String);
+              return fechaB.compareTo(fechaA);
+            });
+
+        print("✅ Historial reconstruido con ${historial.length} días.");
+      } else {
+        // 3️⃣ Si el backend devuelve horas por día correctamente
+        historial =
+            List<Map<String, dynamic>>.from(data).map((e) {
+              final raw = e["horas"];
+              final horas = switch (raw) {
+                null => 0.0,
+                double v => v,
+                int v => v.toDouble(),
+                String s => double.tryParse(s.replaceAll(',', '.')) ?? 0.0,
+                _ => 0.0,
+              };
+
+              return {"fecha": e["fecha"] ?? e["fecha_hora"], "horas": horas};
+            }).toList()..sort(
+              (a, b) => DateTime.parse(
+                b["fecha"],
+              ).compareTo(DateTime.parse(a["fecha"])),
+            );
+      }
+
+      // 4️⃣ Estado actual (trabajando, pausa, fuera)
+      estado = EmpleadoService.estadoFromAPI();
+      final entradaStr =
+          EmpleadoService.ultimoFichajeEstado?["hora"] ??
+          EmpleadoService.ultimoFichajeEstado?["fecha_hora"];
+      if (entradaStr != null) {
+        final fecha = FichajeUtils.parseUtcToLocal(entradaStr);
+        entradaActual = estado == "entrada" ? fecha : null;
+      }
+
+      // 5️⃣ Cálculos de métricas
+      final now = DateTime.now();
+      final hoyKey = DateFormat('yyyy-MM-dd').format(now);
+
+      horasTotales = historial.fold(0.0, (sum, e) => sum + (e["horas"] ?? 0.0));
+
+      final diasActivos = historial
+          .where((e) => (e["horas"] ?? 0) > 0)
+          .map(
+            (e) => DateFormat('yyyy-MM-dd').format(DateTime.parse(e["fecha"])),
+          )
+          .toSet();
+
+      horasHoy = historial
+          .where(
+            (e) =>
+                DateFormat('yyyy-MM-dd').format(DateTime.parse(e["fecha"])) ==
+                hoyKey,
+          )
+          .fold(0.0, (sum, e) => sum + (e["horas"] ?? 0.0));
+
+      horasPromedio = diasActivos.isEmpty
+          ? 0
+          : horasTotales / diasActivos.length;
+
+      // Si está trabajando ahora → añadir tiempo en curso
+      if (estado == "entrada" && entradaActual != null) {
+        final diff = now.difference(entradaActual!);
+        final horasEnCurso = diff.inMinutes / 60.0;
+        horasHoy += horasEnCurso;
+        horasTotales += horasEnCurso;
+      }
+
+      print("✅ Datos cargados correctamente con ${historial.length} días.");
+    } catch (e, st) {
+      print("❌ Error cargando datos: $e");
+      print(st);
+    } finally {
+      if (mounted) setState(() => cargando = false);
+    }
   }
 
-  /// ✅ Formato numérico a "xh ym"
   String f(double h) {
     final hh = h.floor();
     final mm = ((h - hh) * 60).round();
     return "${hh}h ${mm.toString().padLeft(2, "0")}m";
   }
 
-  /// ✅ Obtener estado actual y horas en vivo
-  Map<String, dynamic> getEmpleadoEstado() {
-    final estado = EmpleadoService.estadoFromAPI();
-    final entradaStr =
-        EmpleadoService.ultimoFichajeEstado?["hora"] ??
-        EmpleadoService.ultimoFichajeEstado?["fecha_hora"];
-
-    DateTime? entrada;
-    if (entradaStr != null) entrada = DateTime.parse(entradaStr).toLocal();
-
-    Duration diff = Duration.zero;
-    if (estado == "entrada" && entrada != null) {
-      diff = DateTime.now().difference(entrada);
-    }
-
-    // Total acumulado
-    double total = horas.fold(0.0, (sum, e) => sum + (e["horas"] ?? 0.0));
-    if (estado == "entrada" && entrada != null) {
-      total += diff.inSeconds / 3600.0;
-    }
-
-    // Horas de hoy
-    double hoy = 0.0;
-    final hoyFecha = DateTime.now();
-    for (var h in horas) {
-      final d = DateTime.parse(h["fecha"]);
-      if (d.year == hoyFecha.year &&
-          d.month == hoyFecha.month &&
-          d.day == hoyFecha.day) {
-        hoy = h["horas"] ?? 0.0;
-      }
-    }
-
-    // Si está trabajando, sumar tiempo activo ahora
-    if (estado == "entrada" && entrada != null) {
-      hoy += diff.inSeconds / 3600.0;
-    }
-
-    return {
-      "estado": estado,
-      "entrada": entrada,
-      "total": total,
-      "hoy": hoy,
-      "texto": estado == "entrada"
-          ? "Trabajando"
-          : estado == "pausa"
-          ? "En pausa"
-          : "Fuera de jornada",
-      "color": estado == "entrada"
-          ? Colors.greenAccent
-          : estado == "pausa"
-          ? Colors.amberAccent
-          : Colors.redAccent,
-      "icon": estado == "entrada"
-          ? Icons.play_arrow_rounded
-          : estado == "pausa"
-          ? Icons.pause_rounded
-          : Icons.stop_rounded,
-    };
-  }
-
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final dark = theme.brightness == Brightness.dark;
-
-    final data = getEmpleadoEstado();
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final colorEstado = switch (estado) {
+      "entrada" => Colors.greenAccent,
+      "pausa" => Colors.amberAccent,
+      _ => Colors.redAccent,
+    };
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.empleado["nombre"]),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        title: Text(
+          widget.empleado["nombre"],
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
         actions: [
           IconButton(
-            icon: Icon(dark ? Icons.light_mode : Icons.dark_mode),
+            icon: Icon(
+              dark ? Icons.light_mode : Icons.dark_mode,
+              color: colorEstado,
+            ),
             onPressed: () => Provider.of<ThemeProvider>(
               context,
               listen: false,
             ).toggleTheme(),
           ),
-          const SizedBox(width: 6),
         ],
       ),
-
-      body: Stack(
-        children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 700),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: dark
-                    ? [const Color(0xFF0E1116), const Color(0xFF1A1F29)]
-                    : [const Color(0xFFEAF4FF), Colors.white],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+      body: AnimatedContainer(
+        duration: const Duration(milliseconds: 500),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: dark
+                ? [const Color(0xFF0D1117), const Color(0xFF1C2232)]
+                : [const Color(0xFFF6F8FF), const Color(0xFFE4EBFF)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: cargando
+            ? const Center(child: CircularProgressIndicator())
+            : ListView(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 22,
+                  vertical: 20,
+                ),
+                physics: const BouncingScrollPhysics(),
+                children: [
+                  _avatar(widget.empleado["nombre"], colorEstado, dark),
+                  const SizedBox(height: 16),
+                  _chipEstado(estado, colorEstado),
+                  const SizedBox(height: 26),
+                  _metricas(dark, colorEstado),
+                  const SizedBox(height: 26),
+                  _buildHistorialVisual(dark),
+                ],
               ),
+      ),
+    );
+  }
+
+  // ----------------------------------------------------------
+  // UI ELEMENTOS
+  // ----------------------------------------------------------
+  Widget _avatar(String nombre, Color color, bool dark) {
+    final inicial = nombre.isNotEmpty ? nombre[0].toUpperCase() : "U";
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.all(5),
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            colors: [Colors.blueAccent, Colors.cyanAccent],
+          ),
+        ),
+        child: CircleAvatar(
+          radius: 48,
+          backgroundColor: dark ? Colors.black : Colors.white,
+          child: Text(
+            inicial,
+            style: TextStyle(
+              fontSize: 44,
+              fontWeight: FontWeight.bold,
+              color: color,
             ),
           ),
+        ),
+      ),
+    );
+  }
 
-          loading
-              ? const Center(child: CircularProgressIndicator())
-              : ListView(
-                  padding: const EdgeInsets.all(16),
-                  children: [
-                    // Avatar
-                    Center(
-                      child: Container(
-                        padding: const EdgeInsets.all(3),
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: LinearGradient(
-                            colors: [Colors.blueAccent, Colors.cyanAccent],
-                          ),
-                        ),
-                        child: CircleAvatar(
-                          radius: 45,
-                          backgroundColor: dark ? Colors.black : Colors.white,
-                          child: Text(
-                            widget.empleado["nombre"][0].toUpperCase(),
-                            style: TextStyle(
-                              fontSize: 44,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blueAccent.shade700,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+  Widget _chipEstado(String estado, Color color) {
+    String label = switch (estado) {
+      "entrada" => "🟢 Trabajando",
+      "pausa" => "🟡 En pausa",
+      _ => "🔴 Fuera de jornada",
+    };
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(color: color),
+          color: color.withOpacity(.1),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(color: color, fontWeight: FontWeight.w600),
+        ),
+      ),
+    );
+  }
 
-                    const SizedBox(height: 16),
-                    Center(
-                      child: Text(
-                        widget.empleado["email"],
-                        style: TextStyle(
-                          fontSize: 15,
-                          color: theme.colorScheme.onSurface.withOpacity(.6),
-                        ),
-                      ),
-                    ),
+  Widget _metricas(bool dark, Color color) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(child: _metric("Hoy", f(horasHoy), color, dark)),
+            const SizedBox(width: 14),
+            Expanded(child: _metric("Total", f(horasTotales), color, dark)),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            Expanded(child: _metric("Promedio", f(horasPromedio), color, dark)),
+          ],
+        ),
+      ],
+    );
+  }
 
-                    const SizedBox(height: 20),
-
-                    // ✅ Estado pill
-                    Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(14),
-                          color: data["color"].withOpacity(.2),
-                          border: Border.all(
-                            color: data["color"].withOpacity(.5),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(data["icon"], color: data["color"]),
-                            const SizedBox(width: 6),
-                            Text(
-                              data["texto"],
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: data["color"],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 12),
-                    Center(
-                      child: Text(
-                        "Hoy: ${f(data["hoy"])}",
-                        style: const TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // ✅ Total card
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(18),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                        child: Container(
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            color: dark
-                                ? Colors.white.withOpacity(.05)
-                                : Colors.white.withOpacity(.85),
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: dark
-                                  ? Colors.white.withOpacity(.1)
-                                  : Colors.black.withOpacity(.05),
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                "Total trabajado",
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                              Text(
-                                f(data["total"]),
-                                style: const TextStyle(
-                                  fontSize: 34,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.blueAccent,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              LinearProgressIndicator(
-                                value: (data["total"] / 40).clamp(0, 1),
-                                minHeight: 7,
-                                valueColor: const AlwaysStoppedAnimation(
-                                  Colors.blueAccent,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              const Text(
-                                "Objetivo semanal: 40h",
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 22),
-                    Text(
-                      "Historial",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.onSurface,
-                      ),
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    if (horas.isEmpty)
-                      const Center(child: Text("Sin registros")),
-
-                    ...horas.map((h) {
-                      double horasDia = h["horas"] * 1.0;
-
-                      final d = DateTime.parse(h["fecha"]);
-                      final hoy = DateTime.now();
-                      final esHoy =
-                          d.year == hoy.year &&
-                          d.month == hoy.month &&
-                          d.day == hoy.day;
-
-                      if (esHoy) horasDia = data["hoy"];
-
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16),
-                          color: dark
-                              ? Colors.white.withOpacity(.05)
-                              : Colors.white.withOpacity(.9),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              h["fecha"],
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                                color: theme.colorScheme.onSurface,
-                              ),
-                            ),
-                            Text(
-                              f(horasDia),
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: horasDia >= 8
-                                    ? Colors.green
-                                    : Colors.orange,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }),
-                  ],
-                ),
+  Widget _metric(String title, String value, Color color, bool dark) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        color: dark ? Colors.white10 : Colors.white,
+      ),
+      child: Column(
+        children: [
+          Text(
+            title.toUpperCase(),
+            style: TextStyle(
+              color: dark ? Colors.white60 : Colors.black54,
+              fontSize: 12,
+              letterSpacing: 1,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.bold,
+              fontSize: 22,
+            ),
+          ),
         ],
       ),
+    );
+  }
+
+  // ----------------------------------------------------------
+  // HISTORIAL VISUAL (con barra de progreso)
+  // ----------------------------------------------------------
+  Widget _buildHistorialVisual(bool dark) {
+    final theme = Theme.of(context);
+
+    if (historial.isEmpty) {
+      return Center(
+        child: Text(
+          "Sin registros recientes",
+          style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(.7)),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          "Historial agrupado por días",
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 12),
+        ...historial.map((h) {
+          final fecha = DateTime.parse(h["fecha"]);
+          final hoy = DateTime.now();
+          final esHoy = FichajeUtils.isSameDay(fecha, hoy);
+          final horasDia = esHoy ? horasHoy : (h["horas"] ?? 0.0);
+          final cumplido = horasDia >= 8.0;
+          final color = cumplido
+              ? Colors.greenAccent
+              : (horasDia >= 6 ? Colors.amberAccent : Colors.redAccent);
+
+          return Container(
+            margin: const EdgeInsets.only(bottom: 14),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              color: dark
+                  ? Colors.white.withOpacity(.04)
+                  : Colors.black.withOpacity(.03),
+              border: Border.all(
+                color: esHoy
+                    ? Colors.blueAccent.withOpacity(.5)
+                    : Colors.transparent,
+                width: esHoy ? 1.4 : 0,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.calendar_today_rounded, size: 16, color: color),
+                    const SizedBox(width: 8),
+                    Text(
+                      esHoy
+                          ? "Hoy (${DateFormat('d MMM', 'es_ES').format(fecha)})"
+                          : DateFormat("EEEE d MMM", 'es_ES')
+                                .format(fecha)
+                                .replaceFirstMapped(
+                                  RegExp(r'^\w'),
+                                  (m) => m.group(0)!.toUpperCase(),
+                                ),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: color,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                LinearProgressIndicator(
+                  value: (horasDia / 8).clamp(0.0, 1.0),
+                  minHeight: 8,
+                  borderRadius: BorderRadius.circular(8),
+                  valueColor: AlwaysStoppedAnimation(color),
+                  backgroundColor: color.withOpacity(.15),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      "Horas trabajadas",
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurface.withOpacity(.7),
+                      ),
+                    ),
+                    Text(
+                      f(horasDia),
+                      style: TextStyle(
+                        color: color,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    cumplido
+                        ? "✅ Objetivo diario cumplido"
+                        : "⏳ Por debajo del objetivo",
+                    style: TextStyle(
+                      color: color.withOpacity(.9),
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
+      ],
     );
   }
 }

@@ -49,4 +49,9 @@ class EmpleadoService {
 
     return "fuera";
   }
+  static Future<List> getHistorialEmpleado(String id) async {
+  final res = await ApiService.get('/fichajes/empleado/$id');
+  return res is List ? res : [];
+}
+
 }

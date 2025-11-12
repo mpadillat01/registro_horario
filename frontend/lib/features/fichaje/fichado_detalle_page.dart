@@ -1,78 +1,11 @@
 import 'dart:async';
+import 'dart:math';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:registro_horario/services/fichaje_service.dart';
 import 'package:registro_horario/services/auth_service.dart';
-
-// ✅ Utils integrados (lógica común de cálculo)
-class FichajeUtils {
-  static bool isSameDay(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
-
-  static DateTime parseUtcToLocal(String fecha) {
-    if (fecha.isEmpty) return DateTime.now();
-    final dt = DateTime.parse(fecha);
-    return DateTime.utc(
-      dt.year,
-      dt.month,
-      dt.day,
-      dt.hour,
-      dt.minute,
-      dt.second,
-    ).toLocal();
-  }
-
-  static Duration calcularDuracionDia(
-    List<Map<String, dynamic>> historial,
-    DateTime dia,
-  ) {
-    final eventos = historial.where((e) => isSameDay(e["dt"], dia)).toList()
-      ..sort((a, b) => a["dt"].compareTo(b["dt"]));
-
-    Duration acumulado = Duration.zero;
-    DateTime? ultimaEntrada;
-    DateTime? ultimaPausa;
-
-    for (final e in eventos) {
-      final tipo = e["tipo"];
-      final dt = e["dt"] as DateTime;
-
-      if (tipo == "entrada") {
-        ultimaEntrada = dt;
-      } else if (tipo == "inicio_pausa" && ultimaEntrada != null) {
-        acumulado += dt.difference(ultimaEntrada);
-        ultimaEntrada = null;
-        ultimaPausa = dt;
-      } else if (tipo == "fin_pausa") {
-        ultimaPausa = null;
-        ultimaEntrada = dt;
-      } else if (tipo == "salida" && ultimaEntrada != null) {
-        acumulado += dt.difference(ultimaEntrada);
-        ultimaEntrada = null;
-      }
-    }
-
-    if (ultimaEntrada != null && ultimaPausa == null) {
-      acumulado += DateTime.now().difference(ultimaEntrada);
-    }
-
-    return acumulado;
-  }
-
-  static Duration calcularTotal(List<Map<String, dynamic>> historial) {
-    final dias = <DateTime>{};
-    for (final e in historial) {
-      final dt = e["dt"] as DateTime;
-      dias.add(DateTime(dt.year, dt.month, dt.day));
-    }
-
-    Duration total = Duration.zero;
-    for (final d in dias) {
-      total += calcularDuracionDia(historial, d);
-    }
-    return total;
-  }
-}
+import 'package:registro_horario/utils/fichaje_utils.dart';
 
 class FichadoDetallePage extends StatefulWidget {
   const FichadoDetallePage({super.key});
@@ -81,23 +14,31 @@ class FichadoDetallePage extends StatefulWidget {
   State<FichadoDetallePage> createState() => _FichadoDetallePageState();
 }
 
-class _FichadoDetallePageState extends State<FichadoDetallePage> {
+class _FichadoDetallePageState extends State<FichadoDetallePage>
+    with TickerProviderStateMixin {
   bool loading = true;
   List<Map<String, dynamic>> historial = [];
   Map<String, dynamic>? ultimo;
   Timer? timer;
   DateTime? entradaActual;
+  Duration trabajadoHoy = Duration.zero;
+
+  late AnimationController _ringController;
 
   @override
   void initState() {
     super.initState();
+    _ringController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 6),
+    )..repeat();
     cargar();
-    timer = Timer.periodic(const Duration(seconds: 1), (_) => setState(() {}));
   }
 
   @override
   void dispose() {
     timer?.cancel();
+    _ringController.dispose();
     super.dispose();
   }
 
@@ -119,116 +60,35 @@ class _FichadoDetallePageState extends State<FichadoDetallePage> {
 
     if (ultimo?["estado"] == "entrada") {
       entradaActual = FichajeUtils.parseUtcToLocal(ultimo!["hora"] ?? "");
+      _iniciarActualizacionEnVivo();
     }
 
-    setState(() => loading = false);
+    setState(() {
+      trabajadoHoy = calcularTotalHoy();
+      loading = false;
+    });
   }
 
-  // ✅ Total trabajado hoy (acumulado + actual)
+  void _iniciarActualizacionEnVivo() {
+    timer?.cancel();
+    timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted && ultimo?["estado"] == "entrada") {
+        setState(() {
+          trabajadoHoy = calcularTotalHoy();
+        });
+      }
+    });
+  }
+
   Duration calcularTotalHoy() {
     final hoy = DateTime.now();
-    Duration trabajadoHoy = FichajeUtils.calcularDuracionDia(historial, hoy);
-
-    // Si está trabajando ahora, añadir tiempo actual
-    if (entradaActual != null && (ultimo?["estado"] == "entrada")) {
-      final ahora = DateTime.now();
-      trabajadoHoy += ahora.difference(entradaActual!);
-    }
-
-    return trabajadoHoy;
+    return FichajeUtils.calcularDuracionDia(historial, hoy);
   }
 
   String fmtHM(Duration d) {
     final hh = d.inHours;
     final mm = (d.inMinutes % 60).toString().padLeft(2, '0');
     return "${hh}h ${mm}m";
-  }
-
-  String diaCorto(DateTime d) {
-    const dias = ["L", "M", "X", "J", "V", "S", "D"];
-    return dias[d.weekday - 1];
-  }
-
-  Color estadoColor(String e) {
-    switch (e) {
-      case "entrada":
-        return const Color(0xFF3DDC84);
-      case "inicio_pausa":
-        return const Color(0xFFFFC857);
-      case "salida":
-        return const Color(0xFFFF6B6B);
-      default:
-        return Colors.grey;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (loading) {
-      return const Scaffold(
-        backgroundColor: Color(0xFF0E1116),
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    final estado = ultimo?["estado"] ?? "sin_registro";
-    final totalDuracion = FichajeUtils.calcularTotal(historial);
-
-    final dark = Theme.of(context).brightness == Brightness.dark;
-
-    return Scaffold(
-      backgroundColor: dark ? const Color(0xFF0E1116) : Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        iconTheme: IconThemeData(
-          color: Theme.of(context).colorScheme.onSurface,
-        ),
-        title: Text(
-          "Registro detallado",
-          style: TextStyle(
-            color: Theme.of(context).colorScheme.onSurface,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        centerTitle: true,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(18),
-        child: ListView(
-          children: [
-            _glass(context, child: _estadoCard(estado)),
-            const SizedBox(height: 16),
-            _glass(context, child: _totalCard(totalDuracion)),
-            const SizedBox(height: 20),
-            Text(
-              "Historial diario",
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurface,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 12),
-            ..._buildHistorialDiario(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _glass(BuildContext context, {required Widget child}) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: dark
-            ? Colors.white.withOpacity(.05)
-            : Colors.black.withOpacity(.05),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: child,
-    );
   }
 
   String fmtHMS(Duration d) {
@@ -238,20 +98,196 @@ class _FichadoDetallePageState extends State<FichadoDetallePage> {
     return "$hh:$mm:$ss";
   }
 
-  // ✅ Ahora muestra total trabajado HOY en lugar de contador desde la última entrada
-  Widget _estadoCard(String estado) {
+  Color estadoColor(String e) {
+    switch (e) {
+      case "entrada":
+        return const Color(0xFF4B7BFF); // azul vibrante
+      case "inicio_pausa":
+        return const Color(0xFFFFC04D); // ámbar cálido
+      case "salida":
+        return const Color(0xFFFF5C5C); // rojo coral intenso
+      default:
+        return const Color(0xFF9CA3AF); // gris neutro
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+
+    if (loading) {
+      return Scaffold(
+        backgroundColor: dark ? const Color(0xFF0E1116) : Colors.white,
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final estado = ultimo?["estado"] ?? "sin_registro";
+    final totalDuracion = FichajeUtils.calcularTotal(historial);
+    final color = estadoColor(estado);
+
+    return Scaffold(
+      backgroundColor: dark ? const Color(0xFF0E1116) : Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        title: Text(
+          "Registro detallado",
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurface,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        centerTitle: true,
+      ),
+      body: AnimatedContainer(
+        duration: const Duration(seconds: 1),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: dark
+                ? [const Color(0xFF11151F), const Color(0xFF1B2330)]
+                : [const Color(0xFFF5F6FA), const Color(0xFFE3E7EF)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: ListView(
+              physics: const BouncingScrollPhysics(),
+              children: [
+                _glass(context, child: _estadoCard(estado, color)),
+                const SizedBox(height: 20),
+                _glass(context, child: _totalCard(totalDuracion, color)),
+                const SizedBox(height: 26),
+                _glass(context, child: _resumenDiario(color)),
+                const SizedBox(height: 26),
+                Text(
+                  "Historial diario",
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ..._buildHistorialDiario(),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _resumenDiario(Color color) {
+    final objetivo = const Duration(hours: 8);
+    final progreso = (trabajadoHoy.inSeconds / objetivo.inSeconds).clamp(
+      0.0,
+      1.0,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          "Cumplimiento diario",
+          style: TextStyle(color: Colors.white.withOpacity(.7)),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  SizedBox(
+                    width: 90,
+                    height: 90,
+                    child: CircularProgressIndicator(
+                      value: progreso,
+                      strokeWidth: 8,
+                      valueColor: AlwaysStoppedAnimation(color.withOpacity(.8)),
+                      backgroundColor: Colors.white12,
+                    ),
+                  ),
+                  Text(
+                    "${(progreso * 100).toStringAsFixed(0)}%",
+                    style: TextStyle(
+                      color: color.withOpacity(.9),
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 20),
+            Expanded(
+              flex: 2,
+              child: Text(
+                "Has trabajado ${fmtHM(trabajadoHoy)} de 8h hoy.",
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.white.withOpacity(.85),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _glass(BuildContext context, {required Widget child}) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: dark
+            ? Colors.white.withOpacity(.04)
+            : Colors.black.withOpacity(.04),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(.06)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(.07),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+
+  Widget _estadoCard(String estado, Color color) {
     return Row(
       children: [
-        Icon(
-          estado == "entrada"
-              ? Icons.play_circle
-              : estado == "inicio_pausa"
-              ? Icons.pause_circle
-              : Icons.stop_circle,
-          color: estadoColor(estado),
-          size: 48,
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            RotationTransition(
+              turns: _ringController,
+              child: CustomPaint(
+                size: const Size(70, 70),
+                painter: _AnimatedRingPainter(progress: 1, color: color),
+              ),
+            ),
+            Icon(
+              estado == "entrada"
+                  ? Icons.play_circle_fill_rounded
+                  : estado == "inicio_pausa"
+                  ? Icons.pause_circle_filled_rounded
+                  : Icons.stop_circle_rounded,
+              color: color.withOpacity(.9),
+              size: 46,
+            ),
+          ],
         ),
-        const SizedBox(width: 14),
+        const SizedBox(width: 20),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -263,25 +299,22 @@ class _FichadoDetallePageState extends State<FichadoDetallePage> {
                     ? "En pausa"
                     : "Fuera de jornada",
                 style: TextStyle(
-                  fontSize: 14,
+                  fontSize: 15,
                   color: Theme.of(
                     context,
                   ).colorScheme.onSurface.withOpacity(.7),
                 ),
               ),
-              if (estado == "entrada")
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    fmtHMS(calcularTotalHoy()), // 👈 hh:mm:ss en vivo
-                    style: TextStyle(
-                      color: estadoColor(estado),
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.2,
-                    ),
-                  ),
+              const SizedBox(height: 4),
+              Text(
+                fmtHMS(trabajadoHoy),
+                style: TextStyle(
+                  color: color.withOpacity(.9),
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.2,
                 ),
+              ),
             ],
           ),
         ),
@@ -289,7 +322,8 @@ class _FichadoDetallePageState extends State<FichadoDetallePage> {
     );
   }
 
-  Widget _totalCard(Duration totalDuracion) {
+  Widget _totalCard(Duration totalDuracion, Color color) {
+    final horas = totalDuracion.inHours;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -303,17 +337,20 @@ class _FichadoDetallePageState extends State<FichadoDetallePage> {
         Text(
           fmtHM(totalDuracion),
           style: TextStyle(
-            fontSize: 30,
+            fontSize: 32,
             fontWeight: FontWeight.bold,
             color: Theme.of(context).colorScheme.onSurface,
           ),
         ),
-        const SizedBox(height: 8),
-        LinearProgressIndicator(
-          value: (totalDuracion.inHours / 40).clamp(0, 1),
-          backgroundColor: Colors.white12,
-          valueColor: const AlwaysStoppedAnimation(Color(0xFF3DDC84)),
-          minHeight: 8,
+        const SizedBox(height: 10),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: LinearProgressIndicator(
+            value: (horas / 40).clamp(0, 1),
+            backgroundColor: Colors.white12,
+            valueColor: AlwaysStoppedAnimation(color.withOpacity(.8)),
+            minHeight: 8,
+          ),
         ),
         const SizedBox(height: 6),
         Text(
@@ -331,14 +368,18 @@ class _FichadoDetallePageState extends State<FichadoDetallePage> {
     final dias = <DateTime>{};
     for (final e in historial) {
       final dt = e["dt"] as DateTime;
-      final d = DateTime(dt.year, dt.month, dt.day);
-      dias.add(d);
+      dias.add(DateTime(dt.year, dt.month, dt.day));
     }
 
     final diasOrdenados = dias.toList()..sort((a, b) => b.compareTo(a));
 
     return diasOrdenados.map((d) {
       final duracion = FichajeUtils.calcularDuracionDia(historial, d);
+      final color = duracion.inHours >= 8
+    ? const Color(0xFF4CAF50) // verde brillante natural (Material Green 500)
+    : const Color(0xFFFFC04D); // ámbar cálido
+
+
       return Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: _glass(
@@ -347,8 +388,11 @@ class _FichadoDetallePageState extends State<FichadoDetallePage> {
             children: [
               CircleAvatar(
                 radius: 20,
-                backgroundColor: Colors.white12,
-                child: Text(diaCorto(d)),
+                backgroundColor: color.withOpacity(.15),
+                child: Text(
+                  DateFormat('EE', 'es_ES').format(d).toUpperCase(),
+                  style: TextStyle(color: color, fontWeight: FontWeight.bold),
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -356,7 +400,7 @@ class _FichadoDetallePageState extends State<FichadoDetallePage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      DateFormat('yyyy-MM-dd').format(d),
+                      DateFormat('dd MMM yyyy', 'es_ES').format(d),
                       style: TextStyle(
                         color: Theme.of(
                           context,
@@ -368,9 +412,7 @@ class _FichadoDetallePageState extends State<FichadoDetallePage> {
                       value: (duracion.inHours / 8).clamp(0, 1),
                       minHeight: 8,
                       backgroundColor: Colors.white12,
-                      valueColor: const AlwaysStoppedAnimation(
-                        Color(0xFF3DDC84),
-                      ),
+                      valueColor: AlwaysStoppedAnimation(color.withOpacity(.8)),
                     ),
                   ],
                 ),
@@ -378,10 +420,7 @@ class _FichadoDetallePageState extends State<FichadoDetallePage> {
               const SizedBox(width: 12),
               Text(
                 fmtHM(duracion),
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.primary,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(color: color, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -389,4 +428,62 @@ class _FichadoDetallePageState extends State<FichadoDetallePage> {
       );
     }).toList();
   }
+}
+
+// 🎨 Anillo animado con más color, sin aura
+class _AnimatedRingPainter extends CustomPainter {
+  final double progress;
+  final Color color;
+
+  _AnimatedRingPainter({required this.progress, required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final stroke = 7.5;
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (size.width - stroke) / 2;
+
+    // Fondo tenue
+    final bg = Paint()
+      ..color = Colors.white.withOpacity(.07)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke;
+    canvas.drawCircle(center, radius, bg);
+
+    // Gradiente más colorido, sin brillo difuso
+    final gradient = SweepGradient(
+      startAngle: -pi / 2,
+      endAngle: 2 * pi * progress - pi / 2,
+      colors: [
+        color.withOpacity(.9),
+        color.withOpacity(.95),
+        color.withOpacity(1.0),
+        color.withOpacity(.85),
+      ],
+      stops: const [0.0, 0.4, 0.8, 1.0],
+      transform: const GradientRotation(-pi / 3),
+    );
+
+    final paint = Paint()
+      ..shader = gradient.createShader(
+        Rect.fromCircle(center: center, radius: radius),
+      )
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round;
+
+    final startAngle = -pi / 2;
+    final sweep = 2 * pi * progress;
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      startAngle,
+      sweep,
+      false,
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _AnimatedRingPainter old) =>
+      old.progress != progress || old.color != color;
 }

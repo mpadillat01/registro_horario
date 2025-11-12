@@ -48,8 +48,11 @@ class ApiService {
   static Future<dynamic> post(String endpoint, dynamic data) async {
     final uri = Uri.parse("$baseUrl$endpoint");
     try {
-      final res = await http.post(uri,
-          headers: await authHeaders(), body: jsonEncode(data));
+      final res = await http.post(
+        uri,
+        headers: await authHeaders(),
+        body: jsonEncode(data),
+      );
       return _handleResponse(res);
     } catch (e) {
       print("❌ Error POST $uri → $e");
@@ -72,9 +75,22 @@ class ApiService {
     }
     try {
       final error = jsonDecode(res.body);
-      throw Exception(error["detail"] ?? "Error desconocido (${res.statusCode})");
+      throw Exception(
+        error["detail"] ?? "Error desconocido (${res.statusCode})",
+      );
     } catch (_) {
       throw Exception("Error HTTP ${res.statusCode}");
+    }
+  }
+
+  static Future<dynamic> delete(String endpoint) async {
+    final uri = Uri.parse("$baseUrl$endpoint");
+    try {
+      final res = await http.delete(uri, headers: await authHeaders());
+      return _handleResponse(res);
+    } catch (e) {
+      print("❌ Error DELETE $uri → $e");
+      throw Exception("Error de conexión al servidor");
     }
   }
 }

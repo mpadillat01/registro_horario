@@ -1,3 +1,4 @@
+// 🔥 PERFIL PAGE — Colores vivos, sin aura ni brillo difuso
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -25,7 +26,6 @@ class _PerfilPageState extends State<PerfilPage> {
   final apellidosCtrl = TextEditingController();
   final emailCtrl = TextEditingController();
   final dniCtrl = TextEditingController();
-  final rolCtrl = TextEditingController();
 
   List<Map<String, dynamic>> historial = [];
 
@@ -33,7 +33,7 @@ class _PerfilPageState extends State<PerfilPage> {
   void initState() {
     super.initState();
     cargarDatos();
-    timer = Timer.periodic(const Duration(seconds: 30), (_) => cargarDatos());
+    timer = Timer.periodic(const Duration(minutes: 1), (_) => cargarDatos());
   }
 
   @override
@@ -50,7 +50,6 @@ class _PerfilPageState extends State<PerfilPage> {
     apellidosCtrl.text = user!["apellidos"] ?? "";
     emailCtrl.text = user!["email"] ?? "";
     dniCtrl.text = user!["dni"] ?? "";
-    rolCtrl.text = user!["rol"] ?? "";
 
     final data = await FichajeService.obtenerHistorial();
     if (data != null && data.isNotEmpty) {
@@ -59,7 +58,8 @@ class _PerfilPageState extends State<PerfilPage> {
           "tipo": e["tipo"],
           "dt": FichajeUtils.parseUtcToLocal(e["fecha_hora"] ?? ""),
         };
-      }).toList()..sort((a, b) => b["dt"].compareTo(a["dt"]));
+      }).toList()
+        ..sort((a, b) => b["dt"].compareTo(a["dt"]));
     }
 
     final ultimo = await FichajeService.getUltimo(user!["id"]);
@@ -68,46 +68,32 @@ class _PerfilPageState extends State<PerfilPage> {
           .toString()
           .toLowerCase();
       final fecha = ultimo["hora"] ?? ultimo["fecha_hora"];
-      if (estado.contains("entrada")) {
-        entradaActual = FichajeUtils.parseUtcToLocal(fecha ?? "");
-      } else {
-        entradaActual = null;
-      }
+      entradaActual =
+          estado.contains("entrada") ? FichajeUtils.parseUtcToLocal(fecha) : null;
     }
 
     final now = DateTime.now();
-    final totalDuracion = FichajeUtils.calcularTotal(historial);
-    final hoyDuracion = FichajeUtils.calcularDuracionDia(
-      historial,
-      DateTime.now(),
-    );
-    final semanaDuracion = FichajeUtils.calcularRango(
-      historial,
-      now.subtract(Duration(days: now.weekday - 1)),
-      now,
-    );
-    final mesDuracion = FichajeUtils.calcularRango(
-      historial,
-      DateTime(now.year, now.month, 1),
-      now,
-    );
+    totalHoras = FichajeUtils.calcularTotal(historial).inHours.toDouble();
+    hoy = FichajeUtils.calcularDuracionDia(historial, now).inHours.toDouble();
+    horasSemana = FichajeUtils
+        .calcularRango(historial, now.subtract(Duration(days: now.weekday - 1)), now)
+        .inHours
+        .toDouble();
+    horasMes = FichajeUtils
+        .calcularRango(historial, DateTime(now.year, now.month, 1), now)
+        .inHours
+        .toDouble();
 
-    totalHoras = totalDuracion.inSeconds / 3600.0;
-    hoy = hoyDuracion.inSeconds / 3600.0;
-    horasSemana = semanaDuracion.inSeconds / 3600.0;
-    horasMes = mesDuracion.inSeconds / 3600.0;
-
-    cargando = false;
-    if (mounted) setState(() {});
+    if (mounted) setState(() => cargando = false);
   }
 
-  String f(double h) =>
-      "${h.floor()}h ${(((h - h.floor()) * 60).round()).toString().padLeft(2, '0')}m";
+  String f(double h) => "${h.floor()}h ${(h % 1 * 60).round()}m";
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final glow = entradaActual != null ? Colors.greenAccent : Colors.blueAccent;
+    final colorPrincipal =
+        entradaActual != null ? Colors.greenAccent.shade400 : Colors.blueAccent.shade400;
     final nombre = user?["nombre"] ?? "Usuario";
     final email = user?["email"] ?? "";
 
@@ -121,161 +107,122 @@ class _PerfilPageState extends State<PerfilPage> {
     }
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0E1116) : Colors.white,
       appBar: AppBar(
-        elevation: 0,
         backgroundColor: Colors.transparent,
-        title: ShaderMask(
-          shaderCallback: (r) => LinearGradient(
-            colors: [glow.withOpacity(.9), Colors.white],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ).createShader(r),
-          child: const Text(
-            "Mi perfil",
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 22,
-              color: Colors.white,
-            ),
+        elevation: 0,
+        title: Text(
+          "Mi perfil",
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: isDark ? Colors.white : Colors.black,
           ),
         ),
-        iconTheme: IconThemeData(color: isDark ? Colors.white : Colors.black),
         actions: [
           IconButton(
             icon: Icon(
               isDark ? Icons.light_mode : Icons.dark_mode,
-              color: glow,
+              color: colorPrincipal,
             ),
-            onPressed: () => Provider.of<ThemeProvider>(
-              context,
-              listen: false,
-            ).toggleTheme(),
+            onPressed: () => context.read<ThemeProvider>().toggleTheme(),
           ),
         ],
       ),
-      body: AnimatedContainer(
-        duration: const Duration(milliseconds: 400),
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+      body: Container(
         decoration: BoxDecoration(
-          gradient: isDark
-              ? const LinearGradient(
-                  colors: [Color(0xFF0E1116), Color(0xFF141823)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                )
-              : const LinearGradient(
-                  colors: [Color(0xFFf3f6ff), Color(0xFFe9efff)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
+          gradient: LinearGradient(
+            colors: isDark
+                ? [const Color(0xFF0D1117), const Color(0xFF1C2232)]
+                : [const Color(0xFFF6F8FF), const Color(0xFFE4EBFF)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
         ),
-        child: ListView(
-          physics: const BouncingScrollPhysics(),
-          children: [
-            const SizedBox(height: 10),
-            _avatar(nombre, glow, isDark),
-            const SizedBox(height: 22),
-
-            /// 🟢 Solo nombre/email o modo edición
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              child: !editando
-                  ? Column(
-                      children: [
-                        Text(
-                          nombre,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            color: isDark ? Colors.white : Colors.black,
+        child: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
+            physics: const BouncingScrollPhysics(),
+            children: [
+              _avatar(nombre, colorPrincipal, isDark),
+              const SizedBox(height: 18),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                child: !editando
+                    ? Column(
+                        children: [
+                          Text(
+                            nombre,
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? Colors.white : Colors.black,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          email,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 15,
-                            color: isDark ? Colors.white60 : Colors.black54,
+                          const SizedBox(height: 4),
+                          Text(
+                            email,
+                            style: TextStyle(
+                              fontSize: 15,
+                              color:
+                                  isDark ? Colors.white70 : Colors.grey.shade700,
+                            ),
                           ),
-                        ),
-                      ],
-                    )
-                  : _editarPerfil(isDark, glow),
-            ),
-
-            const SizedBox(height: 26),
-            _chipEstado(entradaActual != null, glow),
-            const SizedBox(height: 24),
-
-            Row(
-              children: [
-                Expanded(child: _metric("Hoy", f(hoy), glow, isDark)),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: _metric("Semana", f(horasSemana), glow, isDark),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(child: _metric("Mes", f(horasMes), glow, isDark)),
-                const SizedBox(width: 14),
-                Expanded(child: _metric("Total", f(totalHoras), glow, isDark)),
-              ],
-            ),
-            const SizedBox(height: 30),
-            _buildHistorialCard(isDark),
-            const SizedBox(height: 30),
-            _logoutButton(),
-          ],
+                        ],
+                      )
+                    : _editarPerfil(isDark, colorPrincipal),
+              ),
+              const SizedBox(height: 26),
+              _chipEstado(entradaActual != null, colorPrincipal),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(child: _metric("Hoy", f(hoy), colorPrincipal, isDark)),
+                  const SizedBox(width: 14),
+                  Expanded(child: _metric("Semana", f(horasSemana), colorPrincipal, isDark)),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(child: _metric("Mes", f(horasMes), colorPrincipal, isDark)),
+                  const SizedBox(width: 14),
+                  Expanded(child: _metric("Total", f(totalHoras), colorPrincipal, isDark)),
+                ],
+              ),
+              const SizedBox(height: 32),
+              _buildHistorialCard(isDark),
+              const SizedBox(height: 40),
+              _logoutButton(),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _avatar(String nombre, Color glow, bool isDark) {
+  // -------------------------------
+  // AVATAR
+  // -------------------------------
+  Widget _avatar(String nombre, Color color, bool dark) {
     final inicial = nombre.isNotEmpty ? nombre[0].toUpperCase() : "U";
-
     return Center(
       child: Stack(
         alignment: Alignment.bottomRight,
         children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 800),
+          Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: glow.withOpacity(.4),
-                  blurRadius: 25,
-                  spreadRadius: 2,
-                ),
-              ],
-              gradient: LinearGradient(
-                colors: [
-                  glow.withOpacity(.8),
-                  isDark
-                      ? Colors.white.withOpacity(.08)
-                      : Colors.black.withOpacity(.05),
-                ],
-              ),
+              color: dark ? Colors.white10 : Colors.black12,
             ),
             child: CircleAvatar(
               radius: 52,
-              backgroundColor: isDark
-                  ? Colors.white.withOpacity(.06)
-                  : Colors.black.withOpacity(.06),
+              backgroundColor: dark ? Colors.white12 : Colors.black.withOpacity(.06),
               child: Text(
                 inicial,
                 style: TextStyle(
                   fontSize: 44,
                   fontWeight: FontWeight.bold,
-                  color: glow,
+                  color: color,
                 ),
               ),
             ),
@@ -288,11 +235,8 @@ class _PerfilPageState extends State<PerfilPage> {
               child: Container(
                 padding: const EdgeInsets.all(7),
                 decoration: BoxDecoration(
-                  color: glow,
+                  color: color,
                   shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(color: glow.withOpacity(.4), blurRadius: 10),
-                  ],
                 ),
                 child: const Icon(Icons.edit, size: 18, color: Colors.black),
               ),
@@ -303,93 +247,73 @@ class _PerfilPageState extends State<PerfilPage> {
     );
   }
 
-  Widget _editarPerfil(bool isDark, Color glow) => Column(
-    children: [
-      _input(nombreCtrl, "Nombre", glow, isDark),
-      const SizedBox(height: 12),
-      _input(apellidosCtrl, "Apellidos", glow, isDark),
-      const SizedBox(height: 12),
-      _input(emailCtrl, "Email", glow, isDark),
-      const SizedBox(height: 12),
-      _input(dniCtrl, "DNI", glow, isDark),
-      const SizedBox(height: 12),
-      const SizedBox(height: 16),
-      ElevatedButton.icon(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: glow,
-          foregroundColor: Colors.black,
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+  Widget _editarPerfil(bool dark, Color color) => Column(
+        children: [
+          _input(nombreCtrl, "Nombre", color, dark),
+          const SizedBox(height: 12),
+          _input(apellidosCtrl, "Apellidos", color, dark),
+          const SizedBox(height: 12),
+          _input(emailCtrl, "Email", color, dark),
+          const SizedBox(height: 12),
+          _input(dniCtrl, "DNI", color, dark),
+          const SizedBox(height: 20),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: color,
+              foregroundColor: Colors.black,
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            onPressed: () {
+              _toast("✅ Perfil actualizado correctamente");
+              setState(() => editando = false);
+            },
+            icon: const Icon(Icons.save),
+            label: const Text("Guardar"),
           ),
-        ),
-        onPressed: () {
-          _toast("✅ Perfil actualizado correctamente");
-          setState(() {
-            user!["nombre"] = nombreCtrl.text;
-            user!["apellidos"] = apellidosCtrl.text;
-            user!["email"] = emailCtrl.text;
-            user!["dni"] = dniCtrl.text;
-            editando = false;
-          });
-        },
-        icon: const Icon(Icons.save),
-        label: const Text("Guardar"),
-      ),
-    ],
-  );
+        ],
+      );
 
-  Widget _input(
-    TextEditingController ctrl,
-    String label,
-    Color glow,
-    bool dark, {
-    bool enabled = true,
-  }) {
+  Widget _input(TextEditingController ctrl, String label, Color color, bool dark) {
     return TextField(
       controller: ctrl,
-      enabled: enabled,
-      style: TextStyle(
-        color: enabled
-            ? (dark ? Colors.white : Colors.black)
-            : Colors.grey.shade500,
-      ),
+      style: TextStyle(color: dark ? Colors.white : Colors.black),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: TextStyle(color: glow.withOpacity(.8)),
+        labelStyle: TextStyle(color: color),
         filled: true,
-        fillColor: enabled
-            ? (dark
-                  ? Colors.white.withOpacity(.05)
-                  : Colors.black.withOpacity(.04))
-            : Colors.grey.withOpacity(.1),
+        fillColor: dark ? Colors.white10 : Colors.black.withOpacity(.04),
         enabledBorder: OutlineInputBorder(
-          borderSide: BorderSide(color: glow.withOpacity(.3)),
+          borderSide: BorderSide(color: color.withOpacity(.4)),
           borderRadius: BorderRadius.circular(14),
         ),
         focusedBorder: OutlineInputBorder(
-          borderSide: BorderSide(color: glow, width: 1.5),
+          borderSide: BorderSide(color: color, width: 1.5),
           borderRadius: BorderRadius.circular(14),
         ),
       ),
     );
   }
 
-  Widget _chipEstado(bool trabajando, Color glow) {
+  // -------------------------------
+  // CHIP Y MÉTRICAS
+  // -------------------------------
+  Widget _chipEstado(bool trabajando, Color color) {
     final label = trabajando ? "Trabajando" : "Fuera de servicio";
     return Center(
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 500),
+      child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(30),
-          border: Border.all(color: glow.withOpacity(.5)),
-          color: glow.withOpacity(.12),
+          border: Border.all(color: color),
+          color: color.withOpacity(.1),
         ),
         child: Text(
           label,
           style: TextStyle(
-            color: glow,
+            color: color,
             fontSize: 14,
             fontWeight: FontWeight.w600,
           ),
@@ -398,34 +322,40 @@ class _PerfilPageState extends State<PerfilPage> {
     );
   }
 
-  Widget _metric(String title, String value, Color glow, bool dark) =>
-      Container(
-        padding: const EdgeInsets.symmetric(vertical: 18),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          color: dark
-              ? Colors.white.withOpacity(.05)
-              : Colors.black.withOpacity(.04),
-        ),
-        child: Column(
-          children: [
-            Text(
-              title,
-              style: TextStyle(color: dark ? Colors.white60 : Colors.black54),
+  Widget _metric(String title, String value, Color color, bool dark) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        color: dark ? Colors.white10 : Colors.white,
+      ),
+      child: Column(
+        children: [
+          Text(
+            title.toUpperCase(),
+            style: TextStyle(
+              color: dark ? Colors.white60 : Colors.black54,
+              fontSize: 12,
+              letterSpacing: 1,
             ),
-            const SizedBox(height: 5),
-            Text(
-              value,
-              style: TextStyle(
-                color: glow,
-                fontWeight: FontWeight.bold,
-                fontSize: 22,
-              ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.bold,
+              fontSize: 22,
             ),
-          ],
-        ),
-      );
+          ),
+        ],
+      ),
+    );
+  }
 
+  // -------------------------------
+  // HISTORIAL
+  // -------------------------------
   Widget _buildHistorialCard(bool dark) {
     final txt = dark ? Colors.white70 : Colors.black87;
     if (historial.isEmpty) {
@@ -437,6 +367,15 @@ class _PerfilPageState extends State<PerfilPage> {
       );
     }
 
+    final Map<String, List<Map<String, dynamic>>> agrupado = {};
+    for (var h in historial) {
+      final fecha = h["dt"] as DateTime;
+      final key = DateFormat('yyyy-MM-dd').format(fecha);
+      agrupado.putIfAbsent(key, () => []).add(h);
+    }
+
+    final dias = agrupado.keys.toList()..sort((a, b) => b.compareTo(a));
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -444,36 +383,55 @@ class _PerfilPageState extends State<PerfilPage> {
           "Historial de fichajes",
           style: TextStyle(
             fontWeight: FontWeight.bold,
-            fontSize: 16,
+            fontSize: 18,
             color: txt,
           ),
         ),
         const SizedBox(height: 10),
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: dias.length,
+          itemBuilder: (context, i) {
+            final diaKey = dias[i];
+            final eventos = agrupado[diaKey]!;
+            final fecha = DateTime.parse(diaKey);
+            final esHoy = FichajeUtils.isSameDay(fecha, DateTime.now());
 
-        // 🔽 Scroll interno para los fichajes
-        Container(
-          constraints: const BoxConstraints(
-            maxHeight: 300,
-          ), // puedes ajustar altura
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            color: dark
-                ? Colors.white.withOpacity(.03)
-                : Colors.black.withOpacity(.03),
-          ),
-          child: Scrollbar(
-            thumbVisibility: true,
-            radius: const Radius.circular(20),
-            thickness: 4,
-            child: ListView.builder(
-              itemCount: historial.length,
-              physics: const AlwaysScrollableScrollPhysics(),
-              itemBuilder: (context, index) {
-                final h = historial[index];
-                return _buildHistorialItem(h, dark);
-              },
-            ),
-          ),
+            return Container(
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                color: dark ? Colors.white12 : Colors.black.withOpacity(.04),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.calendar_today_rounded,
+                            size: 16, color: Colors.amberAccent.shade400),
+                        const SizedBox(width: 6),
+                        Text(
+                          esHoy
+                              ? "Hoy (${DateFormat('d MMM', 'es_ES').format(fecha)})"
+                              : DateFormat("EEEE d MMM", 'es_ES').format(fecha),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: Colors.amberAccent.shade400,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    ...eventos.map((e) => _buildHistorialItem(e, dark)),
+                  ],
+                ),
+              ),
+            );
+          },
         ),
       ],
     );
@@ -483,60 +441,67 @@ class _PerfilPageState extends State<PerfilPage> {
     final tipo = (h["tipo"] ?? "").toString().toLowerCase();
     final fecha = h["dt"] as DateTime;
     final color = switch (tipo) {
-      "entrada" => Colors.greenAccent,
-      "salida" => Colors.redAccent,
-      "inicio_pausa" => Colors.amberAccent,
-      "fin_pausa" => Colors.blueAccent,
+      "entrada" => Colors.greenAccent.shade400,
+      "salida" => Colors.redAccent.shade400,
+      "inicio_pausa" => Colors.amberAccent.shade400,
+      "fin_pausa" => Colors.cyanAccent.shade400,
       _ => Colors.grey,
     };
 
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 5),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: dark
-            ? Colors.white.withOpacity(.05)
-            : Colors.black.withOpacity(.04),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withOpacity(.25)),
+        borderRadius: BorderRadius.circular(10),
+        color: dark ? Colors.white10 : Colors.black.withOpacity(.03),
       ),
       child: Row(
         children: [
-          Icon(Icons.access_time_filled, color: color, size: 24),
+          Icon(Icons.access_time_filled, color: color, size: 20),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               tipo.toUpperCase(),
-              style: TextStyle(color: color, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
             ),
           ),
           Text(
-            DateFormat("dd/MM HH:mm").format(fecha),
-            style: TextStyle(color: dark ? Colors.white70 : Colors.black54),
+            DateFormat("HH:mm").format(fecha),
+            style: TextStyle(
+              color: dark ? Colors.white70 : Colors.black54,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ],
       ),
     );
   }
 
+  // -------------------------------
+  // LOGOUT
+  // -------------------------------
   Widget _logoutButton() => ElevatedButton.icon(
-    style: ElevatedButton.styleFrom(
-      backgroundColor: Colors.redAccent.shade400,
-      foregroundColor: Colors.white,
-      minimumSize: const Size(double.infinity, 50),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-    ),
-    icon: const Icon(Icons.logout_rounded),
-    label: const Text(
-      "Cerrar sesión",
-      style: TextStyle(fontWeight: FontWeight.bold),
-    ),
-    onPressed: () async {
-      await AuthService.logout();
-      if (!mounted) return;
-      Navigator.pushNamedAndRemoveUntil(context, "/login", (_) => false);
-    },
-  );
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.redAccent.shade400,
+          foregroundColor: Colors.white,
+          minimumSize: const Size(double.infinity, 50),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+        icon: const Icon(Icons.logout_rounded),
+        label: const Text(
+          "Cerrar sesión",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        onPressed: () async {
+          await AuthService.logout();
+          if (!mounted) return;
+          Navigator.pushNamedAndRemoveUntil(context, "/login", (_) => false);
+        },
+      );
 
   void _toast(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(

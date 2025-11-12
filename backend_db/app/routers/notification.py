@@ -34,6 +34,41 @@ def get_my_notifications(
     ]
 
 
+# ✅ NUEVO — Obtener las notificaciones enviadas por el admin
+@router.get("/enviadas")
+def get_sent_notifications(
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    if current_user.rol != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los administradores pueden ver esta información."
+        )
+
+    notificaciones = (
+        db.query(Notificacion)
+        .filter(
+            Notificacion.empresa_id == current_user.empresa_id,
+            Notificacion.origen == "admin"
+        )
+        .order_by(Notificacion.fecha_envio.desc())
+        .all()
+    )
+
+    return [
+        {
+            "id": str(n.id),
+            "titulo": n.titulo,
+            "mensaje": n.mensaje,
+            "tipo": n.tipo,
+            "fecha_envio": n.fecha_envio.isoformat() if n.fecha_envio else None,
+            "destinatario": str(n.usuario_id),
+        }
+        for n in notificaciones
+    ]
+
+
 # ✅ Marcar todas las notificaciones como leídas
 @router.post("/mark_all")
 def mark_all_read(
@@ -141,4 +176,3 @@ def delete_notification(
     db.delete(notificacion)
     db.commit()
     return {"message": "Notificación eliminada correctamente"}
-

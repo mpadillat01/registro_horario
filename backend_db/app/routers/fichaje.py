@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
-
+from fastapi.responses import JSONResponse
 from app.database import get_db
 from app.models.fichaje import Fichaje
 from app.schemas.fichaje import FichajeResponse
@@ -61,7 +61,6 @@ def historial(db: Session = Depends(get_db), user=Depends(get_current_user)):
         })
 
     return JSONResponse(content=data)
-
 @router.get("/empleado/{usuario_id}/horas")
 def obtener_horas_empleado(usuario_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
     registros = (
@@ -74,6 +73,7 @@ def obtener_horas_empleado(usuario_id: str, db: Session = Depends(get_db), user=
     if not registros:
         return []
 
+    # 🔹 Agrupamos por día (UTC)
     dias = {}
     for r in registros:
         fecha = r.fecha_hora.date()
@@ -83,33 +83,47 @@ def obtener_horas_empleado(usuario_id: str, db: Session = Depends(get_db), user=
 
     for fecha, eventos in dias.items():
         total = 0
-        pause = 0
+        pausa_total = 0
         entrada = None
         pausa_ini = None
         en_pausa = False
 
         for e in eventos:
             if e.tipo == "entrada":
+                # Si ya había una entrada sin cerrar → asumimos salida automática en este momento
+                if entrada:
+                    total += (e.fecha_hora - entrada).total_seconds() - pausa_total
                 entrada = e.fecha_hora
-            elif e.tipo == "inicio_pausa":
+                pausa_ini = None
+                pausa_total = 0
+                en_pausa = False
+
+            elif e.tipo == "inicio_pausa" and entrada and not en_pausa:
                 pausa_ini = e.fecha_hora
                 en_pausa = True
-            elif e.tipo == "fin_pausa" and pausa_ini:
-                pause += (e.fecha_hora - pausa_ini).total_seconds()
-                en_pausa = False
-            elif e.tipo == "salida" and entrada:
-                if en_pausa and pausa_ini:
-                    pause += (e.fecha_hora - pausa_ini).total_seconds()
-                total += (e.fecha_hora - entrada).total_seconds() - pause
-                entrada = None
+
+            elif e.tipo == "fin_pausa" and pausa_ini and en_pausa:
+                pausa_total += (e.fecha_hora - pausa_ini).total_seconds()
                 pausa_ini = None
                 en_pausa = False
 
+            elif e.tipo == "salida" and entrada:
+                # Si está en pausa al salir, se descuenta el tiempo
+                if en_pausa and pausa_ini:
+                    pausa_total += (e.fecha_hora - pausa_ini).total_seconds()
+                    en_pausa = False
+                total += (e.fecha_hora - entrada).total_seconds() - pausa_total
+                entrada = None
+                pausa_ini = None
+                pausa_total = 0
+
+        # 🟡 Si terminó el día con entrada abierta → asumimos fin de jornada
+        if entrada:
+            fin_jornada = eventos[-1].fecha_hora
+            total += (fin_jornada - entrada).total_seconds() - pausa_total
+
         horas = round(total / 3600, 2)
-        resultado.append({
-            "fecha": str(fecha),
-            "horas": horas
-        })
+        resultado.append({"fecha": str(fecha), "horas": horas})
 
     return sorted(resultado, key=lambda x: x["fecha"], reverse=True)
 

@@ -7,6 +7,12 @@ class NotificationsService {
     return List<Map<String, dynamic>>.from(res);
   }
 
+  // ✅ Obtiene las notificaciones enviadas (solo admin)
+  static Future<List<Map<String, dynamic>>> getSentNotifications() async {
+    final res = await ApiService.get("/notificaciones/enviadas");
+    return List<Map<String, dynamic>>.from(res);
+  }
+
   // ✅ Marca todas como leídas
   static Future<void> markAllRead() async {
     await ApiService.post("/notificaciones/mark_all", {});
@@ -14,6 +20,6 @@ class NotificationsService {
 
   // ✅ Elimina una notificación
   static Future<void> deleteNotification(String id) async {
-    await ApiService.post("/notificaciones/delete/$id", {});
+    await ApiService.delete("/notificaciones/$id");
   }
 }

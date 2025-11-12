@@ -1,7 +1,3 @@
-// ---------------------------
-// FICHAJE PAGE — TIMELENS 2.0 (proactivo + visual)
-// ---------------------------
-
 import 'dart:async';
 import 'dart:math';
 import 'dart:ui';
@@ -37,11 +33,9 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
   List<_DayHours> last7 = [];
   Map<String, dynamic>? userData;
 
-  // Objetivos
   static const Duration objetivoDiario = Duration(hours: 8);
   Duration objetivoSemanal = const Duration(hours: 40);
 
-  // Para el anillo de equilibrio (trabajo vs pausa)
   Duration _pausaHoy = Duration.zero;
 
   @override
@@ -51,7 +45,6 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
     _loadUser();
     _loadAll();
 
-    // Ticks para pulso/gauge y contador vivo
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (estadoActual == "entrada") {
         _computeToday();
@@ -59,7 +52,6 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
       if (mounted) setState(() {});
     });
 
-    // Recalcular semana y predicciones cada minuto
     Timer.periodic(const Duration(minutes: 1), (_) async {
       if (!mounted) return;
       _computeWeek();
@@ -85,15 +77,28 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
   }
 
   DateTime _parse(String t) {
-    final dt = DateTime.parse(t);
-    return DateTime.utc(
-      dt.year,
-      dt.month,
-      dt.day,
-      dt.hour,
-      dt.minute,
-      dt.second,
-    ).toLocal();
+    try {
+      DateTime dt = DateTime.parse(t);
+
+      final sinZona = !t.contains('Z') && !t.contains('+') && !t.contains('-');
+      if (sinZona) {
+        dt = DateTime.utc(
+          dt.year,
+          dt.month,
+          dt.day,
+          dt.hour,
+          dt.minute,
+          dt.second,
+          dt.millisecond,
+          dt.microsecond,
+        );
+      }
+
+      return dt.toLocal();
+    } catch (e) {
+      print(" Error parseando '$t': $e");
+      return DateTime.now();
+    }
   }
 
   Future<void> _loadAll() async {
@@ -109,11 +114,12 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
           final ad = a["dt"] as DateTime?;
           final bd = b["dt"] as DateTime?;
           if (ad == null || bd == null) return 0;
-          return bd.compareTo(ad); // más nuevo primero
+          return bd.compareTo(ad);
         });
 
         estadoActual = historial.first["tipo"];
-        ultimaMarca = historial.first["dt"];
+        ultimaMarca = (historial.first["dt"] as DateTime).toLocal();
+
         _computeToday();
         _computeWeek();
       } else {
@@ -134,17 +140,19 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
 
   void _computeToday() {
     workedToday = FichajeUtils.calcularDuracionDia(historial, DateTime.now());
-    // Pausa estimada hoy: diferencia entre (tiempo desde primer evento del día) - workedToday
-    final hoy = DateTime.now();
-    final eventosHoy = historial.where((e) => _isSameDay(e["dt"], hoy)).toList()
-      ..sort((a, b) => (a["dt"] as DateTime).compareTo(b["dt"] as DateTime));
+    final hoyLocal = DateTime.now().toLocal();
+    final eventosHoy =
+        historial.where((e) => _isSameDay(e["dt"], hoyLocal)).toList()..sort(
+          (a, b) => (a["dt"] as DateTime).compareTo(b["dt"] as DateTime),
+        );
 
     if (eventosHoy.isEmpty) {
       _pausaHoy = Duration.zero;
       return;
     }
-    final inicio = eventosHoy.first["dt"] as DateTime;
-    final totalPasado = hoy.difference(inicio);
+
+    final inicio = (eventosHoy.first["dt"] as DateTime).toLocal();
+    final totalPasado = hoyLocal.difference(inicio);
     final pausaAprox = totalPasado - workedToday;
     _pausaHoy = pausaAprox.isNegative ? Duration.zero : pausaAprox;
   }
@@ -157,9 +165,7 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
               (e) => _DayHours(date: e.key, hours: e.value.inSeconds / 3600.0),
             )
             .toList()
-          ..sort(
-            (a, b) => a.date.compareTo(b.date),
-          ); // de más antiguo a más nuevo
+          ..sort((a, b) => a.date.compareTo(b.date));
   }
 
   List<_DayHours> _seedEmptyWeek() {
@@ -200,19 +206,17 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
     setState(() => loading = false);
   }
 
-  // =========================
-  // UI
-  // =========================
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final trabajando = estadoActual == "entrada";
     final enPausa = estadoActual == "inicio_pausa";
-    final baseColor = trabajando
-        ? Colors.greenAccent.shade400
-        : enPausa
-        ? Colors.amberAccent.shade400
-        : Colors.blueAccent.shade400;
+    final baseColor = switch (estadoActual) {
+      "entrada" => const Color(0xFF00C853), // verde brillante
+      "inicio_pausa" => const Color(0xFFFFC107), // ámbar vivo
+      "salida" => const Color(0xFFE53935), // rojo fuerte
+      _ => const Color(0xFF1E88E5), // azul principal
+    };
 
     final progreso = (workedToday.inSeconds / objetivoDiario.inSeconds).clamp(
       0.0,
@@ -234,14 +238,6 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
           ),
         ),
         actions: [
-          IconButton(
-            tooltip: "¿Y si...?",
-            icon: Icon(
-              Icons.help_center_outlined,
-              color: theme.colorScheme.onSurface,
-            ),
-            onPressed: _openWhatIfSheet,
-          ),
           IconButton(
             icon: Icon(
               theme.brightness == Brightness.dark
@@ -346,7 +342,6 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
       ),
       body: Stack(
         children: [
-          // Fondo Aurora animado
           const _AuroraBackground(),
           SafeArea(
             child: LayoutBuilder(
@@ -393,7 +388,6 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
               ],
             ),
             const SizedBox(height: 22),
-            _glass(_shadowTimelineSection()),
           ],
         ),
       );
@@ -408,11 +402,9 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
       const SizedBox(height: 16),
       _glass(_weeklyForecastChart()),
       const SizedBox(height: 16),
-      _glass(_shadowTimelineSection()),
     ],
   );
 
-  // ---- Tarjeta de cristal
   Widget _glass(Widget child) => ClipRRect(
     borderRadius: BorderRadius.circular(18),
     child: BackdropFilter(
@@ -431,9 +423,6 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
     ),
   );
 
-  // =========================
-  // TimeLens (gauge pulso + anillo equilibrio)
-  // =========================
   Widget _timeLens(Color baseColor, double progreso) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
     final pausaRatio =
@@ -441,7 +430,7 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
             .clamp(0.0, 1.0);
 
     return GestureDetector(
-      onLongPress: _openWhatIfSheet, // abrir simulador
+      onLongPress: _openWhatIfSheet,
       child: Column(
         children: [
           Text("Hoy", style: TextStyle(color: onSurface, fontSize: 15)),
@@ -452,7 +441,6 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
             child: Stack(
               alignment: Alignment.center,
               children: [
-                // Gauge con pulso
                 CustomPaint(
                   size: const Size(220, 220),
                   painter: _PulseGaugePainter(
@@ -464,7 +452,6 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
                     time: DateTime.now().millisecondsSinceEpoch / 1000.0,
                   ),
                 ),
-                // Anillo de equilibrio (fino)
                 Positioned.fill(
                   child: Padding(
                     padding: const EdgeInsets.all(6),
@@ -531,9 +518,6 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
     );
   }
 
-  // =========================
-  // Acciones principales
-  // =========================
   Widget _actions(Color baseColor, bool trabajando, bool enPausa) {
     final txt = Theme.of(context).colorScheme.onSurface;
     return Column(
@@ -551,16 +535,12 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
               child: Container(
                 height: 64,
                 decoration: BoxDecoration(
-                  color: baseColor.withOpacity(.18),
+                  color: baseColor.withOpacity(.15), // color plano sutil
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: baseColor, width: 1.6),
-                  boxShadow: [
-                    BoxShadow(
-                      color: baseColor.withOpacity(.35),
-                      blurRadius: 18,
-                      spreadRadius: 2,
-                    ),
-                  ],
+                  border: Border.all(
+                    color: baseColor, // borde sólido
+                    width: 1.6,
+                  ),
                 ),
                 alignment: Alignment.center,
                 child: loading
@@ -577,6 +557,7 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
             ),
           ),
         ),
+
         const SizedBox(height: 12),
         if (trabajando || enPausa)
           SizedBox(
@@ -616,12 +597,8 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
     );
   }
 
-  // =========================
-  // Insight predictivo
-  // =========================
   Widget _insightCard() {
     final on = Theme.of(context).colorScheme.onSurface;
-    // Predicción simple: ritmo actual -> hora estimada para cumplir 8h
     DateTime? salidaPrevista;
     if (estadoActual == "entrada" && ultimaMarca != null) {
       final restante = objetivoDiario - workedToday;
@@ -629,11 +606,7 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
         salidaPrevista = DateTime.now().add(restante);
       }
     }
-    // Proyección semanal
-    final totalSemana = last7.fold<double>(
-      0,
-      (a, b) => a + b.hours,
-    ); // horas reales
+    final totalSemana = last7.fold<double>(0, (a, b) => a + b.hours);
     final objetivoSemana = objetivoSemanal.inHours.toDouble();
     final ratioSemana = (totalSemana / max(1.0, objetivoSemana)).clamp(0, 1);
 
@@ -676,23 +649,16 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
     );
   }
 
-  // =========================
-  // Mini Forecast semanal (real + predicción simple)
-  // =========================
   Widget _weeklyForecastChart() {
     final labels = last7.map((e) => _d(e.date)).toList();
     final values = last7.map((e) => e.hours).toList();
-    // predicción naive: promedio de los últimos 3 días
     final avg = values.isEmpty
         ? 0.0
         : values.sublist(max(0, values.length - 3)).fold(0.0, (a, b) => a + b) /
               max(1, min(3, values.length));
     final predicted = List<double>.from(values);
     if (predicted.isNotEmpty) {
-      predicted[predicted.length - 1] = max(
-        values.last,
-        avg,
-      ); // empuja al último con media si es menor
+      predicted[predicted.length - 1] = max(values.last, avg);
     }
 
     return Column(
@@ -708,51 +674,22 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
         const SizedBox(height: 10),
         SizedBox(
           height: 160,
-          child: CustomPaint(
-            painter: _MiniForecastPainter(
-              labels: labels,
-              real: values,
-              predicted: predicted,
-              maxH: 10,
-              onSurface: Theme.of(
-                context,
-              ).colorScheme.onSurface.withOpacity(.7),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              width: 420,
+              child: CustomPaint(
+                painter: _MiniForecastPainter(
+                  labels: labels,
+                  real: values,
+                  predicted: predicted,
+                  maxH: 10,
+                  onSurface: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withOpacity(.7),
+                ),
+              ),
             ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // =========================
-  // Shadow timeline de la tarjeta inferior
-  // =========================
-  Widget _shadowTimelineSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          "Línea temporal con sombra de futuro",
-          style: TextStyle(
-            color: Theme.of(context).colorScheme.onSurface.withOpacity(.7),
-          ),
-        ),
-        const SizedBox(height: 10),
-        SizedBox(
-          height: 70,
-          child: CustomPaint(
-            painter: _ShadowTimelinePainterV2(
-              worked: workedToday,
-              objetivo: objetivoDiario,
-            ),
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          "Mantén pulsado el círculo de horas para abrir el simulador.",
-          style: TextStyle(
-            color: Theme.of(context).colorScheme.onSurface.withOpacity(.5),
-            fontSize: 12,
           ),
         ),
       ],
@@ -760,211 +697,397 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
   }
 
   void _openWhatIfSheet() {
-    final now = DateTime.now();
+    final ahora = DateTime.now().toLocal();
     final trabajando = estadoActual == "entrada";
-    DateTime salidaSimulada = now.add(const Duration(hours: 1));
     int pausaExtra = 0;
+
+    DateTime salidaPrevista;
+    if (trabajando && ultimaMarca != null) {
+      salidaPrevista = ultimaMarca!.add(const Duration(hours: 8));
+    } else {
+      salidaPrevista = ahora.add(const Duration(hours: 8));
+    }
+
+    Timer? timer;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Theme.of(context).colorScheme.surface.withOpacity(.98),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
+      backgroundColor: Colors.transparent,
       builder: (_) {
         return StatefulBuilder(
           builder: (context, setS) {
-            // 🔹 Simula total trabajado realista
-            final totalSimulado = _simularTotalHoy(
-              salida: salidaSimulada,
-              pausaExtraMin: pausaExtra,
-            );
+            timer ??= Timer.periodic(const Duration(seconds: 30), (_) {
+              if (context.mounted) {
+                setS(() {});
+              } else {
+                timer?.cancel();
+              }
+            });
 
-            final faltaPara8h = objetivoDiario - totalSimulado;
+            final total = workedToday - Duration(minutes: pausaExtra);
+            final faltaPara8h = objetivoDiario - total;
             final cumpleHoy = faltaPara8h.isNegative;
             final porcentaje =
-                (totalSimulado.inSeconds / objetivoDiario.inSeconds * 100)
+                (total.inSeconds / objetivoDiario.inSeconds * 100)
                     .clamp(0, 150)
                     .toStringAsFixed(1);
 
             final deficitSemana = _deficitSemanalRespectoObjetivo(
-              simHoy: totalSimulado,
+              simHoy: total,
             );
-
-            // 🔹 Mensaje predictivo más humano
-            String textoResumen;
-            if (cumpleHoy) {
-              textoResumen =
-                  "Si sales a las ${DateFormat('HH:mm').format(salidaSimulada)}, habrás completado ${_fmtHM(totalSimulado)} de trabajo (🟢 ${porcentaje}%) y acumularás ${_fmtHM(deficitSemana.abs())} de ${deficitSemana.isNegative ? 'excedente' : 'déficit'} semanal.";
-            } else {
-              textoResumen =
-                  "Si sales a las ${DateFormat('HH:mm').format(salidaSimulada)}, habrás trabajado ${_fmtHM(totalSimulado)} (${porcentaje}%) y te faltarán ${_fmtHM(faltaPara8h.abs())} para cumplir las 8h.";
-            }
-
             final color = cumpleHoy ? Colors.greenAccent : Colors.amberAccent;
+            final onSurface = Theme.of(context).colorScheme.onSurface;
 
-            return Padding(
+            final textoResumen = trabajando
+                ? "Si mantienes tu ritmo actual, cumplirás las 8h a las ${DateFormat('HH:mm').format(salidaPrevista)}."
+                : "Tu jornada estimada finalizaría a las ${DateFormat('HH:mm').format(salidaPrevista)} si trabajases 8h.";
+
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 400),
+              curve: Curves.easeOutCubic,
               padding: EdgeInsets.only(
                 bottom: MediaQuery.of(context).viewInsets.bottom + 10,
                 left: 20,
                 right: 20,
-                top: 18,
+                top: 16,
+              ),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Theme.of(context).colorScheme.surface.withOpacity(.98),
+                    Theme.of(context).colorScheme.surface.withOpacity(.92),
+                  ],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(26),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withOpacity(.15),
+                    blurRadius: 25,
+                    spreadRadius: 0,
+                    offset: const Offset(0, -6),
+                  ),
+                ],
               ),
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Barra superior de arrastre
                     Container(
                       width: 60,
                       height: 5,
+                      margin: const EdgeInsets.only(bottom: 18),
                       decoration: BoxDecoration(
                         color: Colors.white24,
                         borderRadius: BorderRadius.circular(99),
                       ),
                     ),
-                    const SizedBox(height: 16),
+
+                    // Título
                     Row(
                       children: [
-                        const Icon(Icons.schedule_rounded),
-                        const SizedBox(width: 8),
+                        Icon(Icons.timeline_rounded, color: color),
+                        const SizedBox(width: 10),
                         Text(
-                          "Simulador de jornada",
+                          "Proyección de jornada",
                           style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 17,
-                            color: Theme.of(context).colorScheme.onSurface,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: onSurface,
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 18),
 
-                    // 🔹 Selector de hora real
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text("Hora de salida simulada:"),
-                        TextButton.icon(
-                          onPressed: () async {
-                            final picked = await showTimePicker(
-                              context: context,
-                              initialTime: TimeOfDay.fromDateTime(
-                                salidaSimulada,
-                              ),
-                            );
-                            if (picked != null) {
-                              setS(() {
-                                salidaSimulada = DateTime(
-                                  now.year,
-                                  now.month,
-                                  now.day,
-                                  picked.hour,
-                                  picked.minute,
-                                );
-                              });
-                            }
-                          },
-                          icon: const Icon(Icons.access_time),
-                          label: Text(
-                            DateFormat('HH:mm').format(salidaSimulada),
-                          ),
-                        ),
-                      ],
-                    ),
+                    // 🌈 Indicador circular premium
+                    _buildAnimatedRing(cumpleHoy, color, total, context),
 
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 18),
 
-                    // 🔹 Pausa extra
+                    // Slider de pausa extra
                     Row(
                       children: [
                         const Icon(Icons.coffee_outlined, size: 18),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: Slider(
-                            value: pausaExtra.toDouble(),
-                            min: 0,
-                            max: 90,
-                            divisions: 9,
-                            label: "${pausaExtra} min pausa",
-                            onChanged: (v) =>
-                                setS(() => pausaExtra = v.round()),
+                          child: SliderTheme(
+                            data: SliderThemeData(
+                              activeTrackColor: color,
+                              inactiveTrackColor: onSurface.withOpacity(.2),
+                              thumbColor: color,
+                              overlayColor: color.withOpacity(.2),
+                            ),
+                            child: Slider(
+                              value: pausaExtra.toDouble(),
+                              min: 0,
+                              max: 90,
+                              divisions: 9,
+                              label: "${pausaExtra} min pausa",
+                              onChanged: (v) =>
+                                  setS(() => pausaExtra = v.round()),
+                            ),
                           ),
                         ),
                       ],
                     ),
 
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 16),
 
-                    // 🔹 Barras de progreso
-                    _barraInfo(
-                      "Horas totales simuladas",
-                      _fmtHM(totalSimulado),
-                      color,
-                      totalSimulado.inSeconds / objetivoDiario.inSeconds,
+                    // 🌟 Barras de rendimiento premium con destello
+                    _barraInfoAvanzada(
+                      icon: Icons.timer_rounded,
+                      titulo: "Horas trabajadas",
+                      valor: _fmtHM(total),
+                      color: color,
+                      progreso: total.inSeconds / objetivoDiario.inSeconds,
+                      subtitulo: total < objetivoDiario
+                          ? "Faltan ${_fmtHM(faltaPara8h.abs())} para completar la jornada"
+                          : "Has cumplido el objetivo diario 🎯",
                     ),
-                    const SizedBox(height: 10),
-                    _barraInfo(
-                      "Cumplimiento del objetivo diario",
-                      "$porcentaje %",
-                      color,
-                      totalSimulado.inSeconds / objetivoDiario.inSeconds,
+                    const SizedBox(height: 12),
+
+                    _barraInfoAvanzada(
+                      icon: Icons.bolt_rounded,
+                      titulo: "Cumplimiento diario",
+                      valor: "$porcentaje %",
+                      color: color,
+                      progreso: total.inSeconds / objetivoDiario.inSeconds,
+                      subtitulo: total.inHours < 4
+                          ? "Vas a buen ritmo ⚡"
+                          : total.inHours < 7
+                          ? "Mantén el ritmo 💪"
+                          : "Último tramo, casi logras las 8h 🏁",
                     ),
-                    const SizedBox(height: 10),
-                    _barraInfo(
-                      "Balance semanal estimado",
-                      "${deficitSemana.isNegative ? '+' : '-'}${_fmtHM(deficitSemana.abs())}",
-                      deficitSemana.isNegative
+                    const SizedBox(height: 12),
+
+                    _barraInfoAvanzada(
+                      icon: Icons.trending_up_rounded,
+                      titulo: "Balance semanal",
+                      valor:
+                          "${deficitSemana.isNegative ? '+' : '-'}${_fmtHM(deficitSemana.abs())}",
+                      color: deficitSemana.isNegative
                           ? Colors.greenAccent
                           : Colors.orangeAccent,
-                      (1 -
-                              (deficitSemana.inSeconds /
-                                  objetivoSemanal.inSeconds))
-                          .clamp(0.0, 1.0),
+                      progreso:
+                          (1 -
+                                  (deficitSemana.inSeconds /
+                                      objetivoSemanal.inSeconds))
+                              .clamp(0.0, 1.0),
+                      subtitulo: deficitSemana.isNegative
+                          ? "Semana por encima del objetivo 📈"
+                          : "Recupera tiempo pendiente 📉",
                     ),
 
                     const SizedBox(height: 20),
-                    Text(
-                      textoResumen,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurface,
-                        fontSize: 14,
+
+                    // Texto resumen
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 14,
+                        horizontal: 16,
+                      ),
+                      decoration: BoxDecoration(
+                        color: color.withOpacity(.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        textoResumen,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: onSurface.withOpacity(.85),
+                          fontSize: 14,
+                        ),
                       ),
                     ),
 
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 26),
+
+                    // Botón final elegante
                     ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: color,
                         foregroundColor: Colors.black,
-                        minimumSize: const Size.fromHeight(48),
+                        minimumSize: const Size.fromHeight(52),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        elevation: 6,
+                        shadowColor: color.withOpacity(.4),
+                      ),
+                      icon: const Icon(Icons.bolt_rounded, size: 22),
+                      label: Text(
+                        "Salida prevista: ${DateFormat('HH:mm').format(salidaPrevista)}",
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                      icon: const Icon(Icons.flash_on),
-                      label: Text(
-                        cumpleHoy
-                            ? "Salir a las ${DateFormat('HH:mm').format(salidaSimulada)}"
-                            : "Continuar hasta ${DateFormat('HH:mm').format(salidaSimulada)}",
-                      ),
-                      onPressed: () {
-                        Navigator.pop(context);
-                        if (estadoActual == "entrada" &&
-                            cumpleHoy &&
-                            salidaSimulada.isBefore(
-                              DateTime.now().add(const Duration(minutes: 5)),
-                            )) {
-                          _marcar("salida");
-                        }
-                      },
+                      onPressed: () => Navigator.pop(context),
                     ),
+
+                    const SizedBox(height: 14),
                   ],
                 ),
               ),
             );
           },
+        );
+      },
+    ).whenComplete(() => timer?.cancel());
+  }
+
+  Widget _buildAnimatedRing(
+    bool cumpleHoy,
+    Color color,
+    Duration total,
+    BuildContext context,
+  ) {
+    final ringColor = cumpleHoy ? Colors.greenAccent : color;
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: total.inSeconds / objetivoDiario.inSeconds),
+      duration: const Duration(milliseconds: 1000),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, _) {
+        final percent = (value * 100).clamp(0, 100);
+
+        return SizedBox(
+          height: 140,
+          width: 140,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // 🔵 Fondo base plano
+              Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface.withOpacity(.08),
+                  shape: BoxShape.circle,
+                ),
+              ),
+
+              // 🔵 Anillo simple plano
+              CustomPaint(
+                size: const Size(120, 120),
+                painter: _AnimatedRingPainter(
+                  progress: value.clamp(0.0, 1.0),
+                  color: ringColor,
+                ),
+              ),
+
+              // 🔵 Texto central
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    "${percent.toStringAsFixed(0)}%",
+                    style: TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.w800,
+                      color: ringColor,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _fmtHM(total),
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withOpacity(.8),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _barraInfoAvanzada({
+    required IconData icon,
+    required String titulo,
+    required String valor,
+    required Color color,
+    required double progreso,
+    String? subtitulo,
+  }) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: progreso.clamp(0.0, 1.0)),
+      duration: const Duration(milliseconds: 800),
+      curve: Curves.easeOutCubic,
+      builder: (context, anim, _) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: color, size: 18),
+                const SizedBox(width: 6),
+                Text(
+                  titulo,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white.withOpacity(.85),
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  valor,
+                  style: TextStyle(color: color, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+
+            // 🔥 Barra animada con destello
+            Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(
+                    value: anim,
+                    backgroundColor: Colors.white.withOpacity(.05),
+                    valueColor: AlwaysStoppedAnimation(color),
+                    minHeight: 6,
+                  ),
+                ),
+                Positioned(
+                  left: (anim * 200).clamp(0, 200),
+                  child: Container(
+                    width: 14,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.white.withOpacity(.8),
+                          color.withOpacity(.2),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (subtitulo != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                subtitulo,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.white.withOpacity(.6),
+                ),
+              ),
+            ],
+          ],
         );
       },
     );
@@ -1002,27 +1125,16 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
     );
   }
 
-  // =========================
-  // Helpers de simulación/presentación
-  // =========================
   Duration _simularTotalHoy({
     required DateTime salida,
     required int pausaExtraMin,
   }) {
-    final hoy = DateTime.now();
-    Duration base = FichajeUtils.calcularDuracionDia(historial, hoy);
+    Duration total = workedToday;
 
-    final estaTrabajando = estadoActual == "entrada";
-    if (estaTrabajando &&
-        ultimaMarca != null &&
-        _isSameDay(ultimaMarca!, hoy)) {
-      final desdeEntrada = DateTime.now().difference(ultimaMarca!);
-      base -= desdeEntrada; // quitar tramo real actual
-      base += salida.difference(ultimaMarca!); // añadir tramo simulado
-    }
-    base -= Duration(minutes: pausaExtraMin);
-    if (base.isNegative) base = Duration.zero;
-    return base;
+    total -= Duration(minutes: pausaExtraMin);
+    if (total.isNegative) total = Duration.zero;
+
+    return total;
   }
 
   Duration _deficitSemanalRespectoObjetivo({required Duration simHoy}) {
@@ -1066,7 +1178,6 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
     );
   }
 
-  // Formatters
   String _fmtHM(Duration d) {
     final hh = d.inHours.toString().padLeft(2, '0');
     final mm = (d.inMinutes % 60).toString().padLeft(2, '0');
@@ -1092,18 +1203,12 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
   }
 }
 
-// =========================
-// MODELOS
-// =========================
 class _DayHours {
   final DateTime date;
   double hours;
   _DayHours({required this.date, required this.hours});
 }
 
-// =========================
-// AURORA BACKGROUND
-// =========================
 class _AuroraBackground extends StatefulWidget {
   const _AuroraBackground();
   @override
@@ -1146,14 +1251,9 @@ class _AuroraBackgroundState extends State<_AuroraBackground>
   }
 }
 
-// =========================
-// PAINTERS VISUALES
-// =========================
-
-// Gauge con pulso (borde late según el tiempo)
 class _PulseGaugePainter extends CustomPainter {
-  final double progress; // 0..1
-  final double time; // segundos
+  final double progress;
+  final double time;
   final Color color;
   final Color background;
 
@@ -1174,7 +1274,6 @@ class _PulseGaugePainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 12;
 
-    // Pulso: 0.9..1.1
     final pulse = 1 + 0.06 * sin(time * 2 * pi);
     final w = 12 * pulse;
 
@@ -1198,7 +1297,6 @@ class _PulseGaugePainter extends CustomPainter {
       fg,
     );
 
-    // Partículas leves
     final pCount = 14;
     final dotPaint = Paint()..color = color.withOpacity(.55);
     for (int i = 0; i < pCount; i++) {
@@ -1214,10 +1312,9 @@ class _PulseGaugePainter extends CustomPainter {
       old.progress != progress || old.time != time;
 }
 
-// Anillo fino: proporción trabajo/pausa
 class _EquilibriumRingPainter extends CustomPainter {
-  final double workRatio; // 0..1
-  final double pauseRatio; // 0..1
+  final double workRatio;
+  final double pauseRatio;
   _EquilibriumRingPainter({required this.workRatio, required this.pauseRatio});
 
   @override
@@ -1238,7 +1335,6 @@ class _EquilibriumRingPainter extends CustomPainter {
 
     double start = -pi / 2;
 
-    // Trabajo (verde)
     arc.color = Colors.greenAccent.withOpacity(.9);
     canvas.drawArc(
       Rect.fromCircle(center: c, radius: r),
@@ -1249,7 +1345,6 @@ class _EquilibriumRingPainter extends CustomPainter {
     );
     start += 2 * pi * workRatio;
 
-    // Pausa (ámbar)
     arc.color = Colors.amberAccent.withOpacity(.9);
     canvas.drawArc(
       Rect.fromCircle(center: c, radius: r),
@@ -1265,7 +1360,48 @@ class _EquilibriumRingPainter extends CustomPainter {
       old.workRatio != workRatio || old.pauseRatio != pauseRatio;
 }
 
-// Mini Forecast (línea real + punteada predicción)
+class _AnimatedRingPainter extends CustomPainter {
+  final double progress;
+  final Color color;
+
+  _AnimatedRingPainter({required this.progress, required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final stroke = 8.0;
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (size.width - stroke) / 2;
+
+    // Fondo del anillo
+    final bg = Paint()
+      ..color = Colors.grey.withOpacity(0.15)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke;
+    canvas.drawCircle(center, radius, bg);
+
+    // Anillo de progreso color plano (sin gradiente)
+    final fg = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = stroke;
+
+    final startAngle = -pi / 2;
+    final sweepAngle = 2 * pi * progress;
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      startAngle,
+      sweepAngle,
+      false,
+      fg,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _AnimatedRingPainter old) =>
+      old.progress != progress || old.color != color;
+}
+
 class _MiniForecastPainter extends CustomPainter {
   final List<String> labels;
   final List<double> real;
@@ -1283,70 +1419,123 @@ class _MiniForecastPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (labels.isEmpty) return;
+    if (labels.isEmpty || real.isEmpty) return;
 
-    final left = 28.0, right = 8.0, top = 8.0, bottom = 22.0;
+    final left = 32.0, right = 12.0, top = 14.0, bottom = 28.0;
     final w = size.width - left - right;
     final h = size.height - top - bottom;
 
-    final bg = Paint()..color = onSurface.withOpacity(.06);
+    final bgPaint = Paint()
+      ..shader = LinearGradient(
+        colors: [onSurface.withOpacity(.05), onSurface.withOpacity(.01)],
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+      ).createShader(Rect.fromLTWH(left, top, w, h));
     canvas.drawRRect(
       RRect.fromRectAndRadius(
         Rect.fromLTWH(left, top, w, h),
-        const Radius.circular(10),
+        const Radius.circular(12),
       ),
-      bg,
+      bgPaint,
     );
 
-    final toX = (int i) =>
-        left + (i / max(1, labels.length - 1)) * w; // puntos equiespaciados
+    double toX(int i) => left + (i / max(1, labels.length - 1)) * w;
     double toY(double v) => top + (1 - (v / maxH).clamp(0, 1)) * h;
 
-    // Real (línea sólida)
-    final realPaint = Paint()
-      ..color = Colors.greenAccent
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.2;
-    final pr = Path()..moveTo(toX(0), toY(real[0]));
+    final areaPath = Path()..moveTo(toX(0), toY(real[0]));
     for (int i = 1; i < real.length; i++) {
-      pr.lineTo(toX(i), toY(real[i]));
+      areaPath.lineTo(toX(i), toY(real[i]));
     }
-    canvas.drawPath(pr, realPaint);
+    areaPath.lineTo(toX(real.length - 1), top + h);
+    areaPath.lineTo(toX(0), top + h);
+    areaPath.close();
 
-    // Predicción (punteada)
-    final predPaint = Paint()
-      ..color = Colors.cyanAccent
+    final areaPaint = Paint()
+      ..shader = LinearGradient(
+        colors: [Colors.greenAccent.withOpacity(.35), Colors.transparent],
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+      ).createShader(Rect.fromLTWH(left, top, w, h));
+    canvas.drawPath(areaPath, areaPaint);
+
+    final glow = Paint()
+      ..color = Colors.greenAccent.withOpacity(.2)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-    final pp = Path()..moveTo(toX(0), toY(predicted[0]));
-    for (int i = 1; i < predicted.length; i++) {
-      pp.lineTo(toX(i), toY(predicted[i]));
-    }
-    // punteado manual
-    _dashPath(canvas, pp, predPaint, 6, 5);
+      ..strokeWidth = 5;
+    final realPaint = Paint()
+      ..shader = const LinearGradient(
+        colors: [Color(0xFF00FF99), Color(0xFF00E0FF)],
+      ).createShader(Rect.fromLTWH(left, top, w, h))
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.6
+      ..strokeCap = StrokeCap.round;
 
-    // Etiquetas
+    final realPath = Path()..moveTo(toX(0), toY(real[0]));
+    for (int i = 1; i < real.length; i++) {
+      realPath.lineTo(toX(i), toY(real[i]));
+    }
+    canvas.drawPath(realPath, glow);
+    canvas.drawPath(realPath, realPaint);
+
+    if (predicted.isNotEmpty) {
+      final predPaint = Paint()
+        ..color = Colors.cyanAccent.withOpacity(.8)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2;
+      final predPath = Path()..moveTo(toX(0), toY(predicted[0]));
+      for (int i = 1; i < predicted.length; i++) {
+        predPath.lineTo(toX(i), toY(predicted[i]));
+      }
+      _dashPath(canvas, predPath, predPaint, 8, 5);
+    }
+
+    final dotOuter = Paint()..color = Colors.white.withOpacity(.85);
+    final dotInner = Paint()..color = Colors.greenAccent;
+    for (int i = 0; i < real.length; i++) {
+      final dx = toX(i);
+      final dy = toY(real[i]);
+      canvas.drawCircle(Offset(dx, dy), 3.2, dotOuter);
+      canvas.drawCircle(Offset(dx, dy), 2.0, dotInner);
+    }
+
+    final axisPaint = Paint()
+      ..color = Colors.white.withOpacity(.1)
+      ..strokeWidth = 1.3;
+    canvas.drawLine(
+      Offset(left, top + h),
+      Offset(left + w, top + h),
+      axisPaint,
+    );
+
     final tp = TextPainter(textDirection: ui.TextDirection.ltr);
     for (int i = 0; i < labels.length; i++) {
       tp.text = TextSpan(
         text: labels[i],
-        style: TextStyle(fontSize: 11, color: onSurface.withOpacity(.8)),
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+          color: onSurface.withOpacity(.75),
+        ),
       );
       tp.layout();
-      tp.paint(
-        canvas,
-        Offset(toX(i) - tp.width / 2, top + h + 4),
-      ); // bajo del área
+      tp.paint(canvas, Offset(toX(i) - tp.width / 2, top + h + 6));
     }
   }
 
-  void _dashPath(Canvas c, Path p, Paint paint, double dash, double gap) {
-    final pm = p.computeMetrics().first;
-    double dist = 0;
-    while (dist < pm.length) {
-      final next = min(dash, pm.length - dist);
-      c.drawPath(pm.extractPath(dist, dist + next), paint);
-      dist += next + gap;
+  void _dashPath(
+    Canvas canvas,
+    Path path,
+    Paint paint,
+    double dash,
+    double gap,
+  ) {
+    for (final metric in path.computeMetrics()) {
+      double distance = 0;
+      while (distance < metric.length) {
+        final len = min(dash, metric.length - distance);
+        canvas.drawPath(metric.extractPath(distance, distance + len), paint);
+        distance += len + gap;
+      }
     }
   }
 
@@ -1355,7 +1544,6 @@ class _MiniForecastPainter extends CustomPainter {
       old.real != real || old.predicted != predicted;
 }
 
-// Timeline compacta (trabajado vs objetivo)
 class _ShadowTimelinePainterV2 extends CustomPainter {
   final Duration worked;
   final Duration objetivo;
@@ -1412,8 +1600,8 @@ class _DialPainterV2 extends CustomPainter {
       ..strokeWidth = 6
       ..strokeCap = StrokeCap.round;
 
-    const startAngle = -pi; // izquierda
-    const sweepAngle = pi; // semicirculo
+    const startAngle = -pi;
+    const sweepAngle = pi;
 
     canvas.drawArc(
       Rect.fromCircle(center: center, radius: radius),
