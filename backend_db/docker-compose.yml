@@ -7,14 +7,14 @@ services:
     restart: always
     depends_on:
       db_registro:
-        condition: service_healthy   # ✅ Espera a que la BD esté lista
+        condition: service_healthy  
     environment:
       DATABASE_URL: postgresql://postgres:password123@db_registro:5432/registro_horario
     ports:
       - "8000:8000"
     networks:
       - app_net
-    healthcheck:                      # 🩺 Comprueba que la API esté viva
+    healthcheck:                     
       test: ["CMD-SHELL", "curl -f http://localhost:8000 || exit 1"]
       interval: 15s
       timeout: 5s
@@ -68,10 +68,10 @@ services:
       - "5678:5678"
     networks:
       - app_net
-    dns:                    # 👇 AÑADE ESTO SI AÚN NO ESTÁ
+    dns:                    
       - 8.8.8.8
       - 1.1.1.1
-    extra_hosts:            # 👇 Y ESTO TAMBIÉN
+    extra_hosts:           
       - "sandbox.smtp.mailtrap.io:3.209.246.195"
     depends_on:
       - db_registro

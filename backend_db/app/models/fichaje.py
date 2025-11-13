@@ -12,6 +12,5 @@ class Fichaje(Base):
     empresa_id = Column(UUID(as_uuid=True), ForeignKey("empresas.id", ondelete="CASCADE"), nullable=False)
     tipo = Column(String(30), nullable=False)
 
-    # ✅ timezone=True
     fecha_hora = Column(DateTime(timezone=True), server_default=func.now())
     fecha_creacion = Column(DateTime(timezone=True), server_default=func.now())

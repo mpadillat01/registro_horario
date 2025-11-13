@@ -7,7 +7,6 @@ from app.security import get_current_user
 
 from app.security import verify_password, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES, hash_password
 
-# 👇 ESTE router es el que faltaba
 router = APIRouter(prefix="/auth", tags=["Autenticación"])
 
 @router.post("/login")

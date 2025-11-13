@@ -33,19 +33,16 @@ class DashboardAdminPage extends StatelessWidget {
               ),
             ),
           ),
-
           BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
             child: Container(color: Colors.black.withOpacity(0.03)),
           ),
-
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 🔹 Cabecera
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -102,10 +99,8 @@ class DashboardAdminPage extends StatelessWidget {
                       ),
                     ],
                   ),
-
                   const SizedBox(height: 30),
 
-                  // 🔹 Tarjetas del panel
                   Expanded(
                     child: GridView(
                       padding: EdgeInsets.zero,
@@ -142,17 +137,15 @@ class DashboardAdminPage extends StatelessWidget {
                           context,
                           icon: Icons.analytics_rounded,
                           title: "Reportes",
-                          route: "",
+                          route: "", 
                           color: Colors.orangeAccent,
-                          soon: true,
                         ),
                         _dashCard(
                           context,
                           icon: Icons.settings_rounded,
                           title: "Ajustes",
-                          route: "",
+                          route: AppRoutes.adminSettings,
                           color: Colors.greenAccent,
-                          soon: true,
                         ),
                       ],
                     ),
@@ -172,13 +165,14 @@ class DashboardAdminPage extends StatelessWidget {
     required String title,
     required String route,
     required Color color,
-    bool soon = false,
   }) {
     final theme = Theme.of(context);
     final dark = theme.brightness == Brightness.dark;
 
     return GestureDetector(
-      onTap: soon ? null : () => Navigator.pushNamed(context, route),
+      onTap: route.isNotEmpty
+          ? () => Navigator.pushNamed(context, route)
+          : null,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.all(16),
@@ -218,15 +212,6 @@ class DashboardAdminPage extends StatelessWidget {
                 color: theme.colorScheme.onSurface,
               ),
             ),
-            if (soon)
-              Text(
-                "Próximamente",
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: theme.colorScheme.onSurface.withOpacity(.5),
-                ),
-              ),
           ],
         ),
       ),

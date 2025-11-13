@@ -5,24 +5,19 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'storage/storage_provider.dart';
 
 class ApiService {
-  // ✅ Ajuste automático según plataforma
   static String get baseUrl {
     if (kIsWeb) {
-      return "http://localhost:8000"; // navegador web
+      return "http://localhost:8000"; 
     }
     if (Platform.isAndroid) {
-      return "http://10.0.2.2:8000"; // emulador Android
+      return "http://10.0.2.2:8000"; 
     }
     if (Platform.isIOS) {
-      return "http://127.0.0.1:8000"; // simulador iOS
+      return "http://127.0.0.1:8000"; 
     }
-    // ✅ Si es dispositivo físico o app desktop (Windows/Mac/Linux)
-    return "http://192.168.1.X:8000"; // ⬅️ cambia por la IP local de tu PC
+    return "http://192.168.1.X:8000";
   }
 
-  // ------------------------
-  // 🔐 Token + headers
-  // ------------------------
   static Future<Map<String, String>> authHeaders() async {
     final token = await storage.getToken();
     return {
@@ -31,9 +26,6 @@ class ApiService {
     };
   }
 
-  // ------------------------
-  // 🌍 Métodos HTTP
-  // ------------------------
   static Future<dynamic> get(String endpoint) async {
     final uri = Uri.parse("$baseUrl$endpoint");
     try {
@@ -60,9 +52,6 @@ class ApiService {
     }
   }
 
-  // ------------------------
-  // ⚙️ Manejo de respuestas
-  // ------------------------
   static dynamic _handleResponse(http.Response res) {
     print("📡 [${res.statusCode}] ${res.request?.url}");
     if (res.statusCode == 401) {

@@ -43,13 +43,11 @@ class _EmpleadoDetallePageState extends State<EmpleadoDetallePage> {
 
       await EmpleadoService.cargarEstadoActual(widget.empleado["id"]);
 
-      // 1️⃣ Intentamos primero obtener las horas diarias ya calculadas (si existen)
       final data = await EmpleadoService.getHorasEmpleado(
         widget.empleado["id"],
       );
       print("📊 Datos recibidos: $data");
 
-      // 2️⃣ Si el endpoint devuelve vacío o solo el día actual → reconstruimos desde los fichajes
       if (data == null || data.isEmpty || data.length <= 1) {
         print("⚠️ Datos insuficientes, reconstruyendo desde fichajes...");
 
@@ -85,7 +83,6 @@ class _EmpleadoDetallePageState extends State<EmpleadoDetallePage> {
 
         print("✅ Historial reconstruido con ${historial.length} días.");
       } else {
-        // 3️⃣ Si el backend devuelve horas por día correctamente
         historial =
             List<Map<String, dynamic>>.from(data).map((e) {
               final raw = e["horas"];
@@ -105,7 +102,6 @@ class _EmpleadoDetallePageState extends State<EmpleadoDetallePage> {
             );
       }
 
-      // 4️⃣ Estado actual (trabajando, pausa, fuera)
       estado = EmpleadoService.estadoFromAPI();
       final entradaStr =
           EmpleadoService.ultimoFichajeEstado?["hora"] ??
@@ -115,7 +111,6 @@ class _EmpleadoDetallePageState extends State<EmpleadoDetallePage> {
         entradaActual = estado == "entrada" ? fecha : null;
       }
 
-      // 5️⃣ Cálculos de métricas
       final now = DateTime.now();
       final hoyKey = DateFormat('yyyy-MM-dd').format(now);
 
@@ -140,7 +135,6 @@ class _EmpleadoDetallePageState extends State<EmpleadoDetallePage> {
           ? 0
           : horasTotales / diasActivos.length;
 
-      // Si está trabajando ahora → añadir tiempo en curso
       if (estado == "entrada" && entradaActual != null) {
         final diff = now.difference(entradaActual!);
         final horasEnCurso = diff.inMinutes / 60.0;
@@ -226,9 +220,6 @@ class _EmpleadoDetallePageState extends State<EmpleadoDetallePage> {
     );
   }
 
-  // ----------------------------------------------------------
-  // UI ELEMENTOS
-  // ----------------------------------------------------------
   Widget _avatar(String nombre, Color color, bool dark) {
     final inicial = nombre.isNotEmpty ? nombre[0].toUpperCase() : "U";
     return Center(
@@ -329,9 +320,6 @@ class _EmpleadoDetallePageState extends State<EmpleadoDetallePage> {
     );
   }
 
-  // ----------------------------------------------------------
-  // HISTORIAL VISUAL (con barra de progreso)
-  // ----------------------------------------------------------
   Widget _buildHistorialVisual(bool dark) {
     final theme = Theme.of(context);
 

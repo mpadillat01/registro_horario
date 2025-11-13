@@ -5,7 +5,7 @@ from jose import jwt
 from app.database import get_db
 from app.models.usuario import Usuario
 from app.models.empresa import Empresa
-from app.security import SECRET_KEY, ALGORITHM, get_current_user  # ✅ AÑADIDO AQUÍ
+from app.security import SECRET_KEY, ALGORITHM, get_current_user  
 
 router = APIRouter(prefix="/usuarios", tags=["Usuarios"])
 

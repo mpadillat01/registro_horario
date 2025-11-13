@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:registro_horario/features/admin/admin_settings_page.dart';
 import 'package:registro_horario/features/auth/company_plan_page.dart';
-import 'package:registro_horario/features/admin/enviar_mensaje_page.dart'; // ✅ nueva importación
-
+import 'package:registro_horario/features/admin/enviar_mensaje_page.dart';
 import '../features/landing/landing_page.dart';
 import '../features/auth/login_page.dart';
 import '../features/auth/register_company_page.dart';
@@ -23,7 +23,8 @@ class AppRoutes {
   static const String fichaje = "/fichaje";
   static const String perfil = "/perfil";
   static const String plans = "/plans";
-  static const String enviarMensaje = "/enviar-mensaje"; // ✅ nueva ruta
+  static const String enviarMensaje = "/enviar-mensaje";
+  static const adminSettings = '/ajustes';
 
   static Map<String, WidgetBuilder> routes = {
     landing: (context) => const LandingPage(),
@@ -36,6 +37,7 @@ class AppRoutes {
     fichaje: (context) => const FichajePage(),
     perfil: (context) => const PerfilPage(),
     plans: (context) => const CompanyPlansPage(),
-    enviarMensaje: (context) => const EnviarMensajePage(), // ✅ añadida aquí
+    enviarMensaje: (context) => const EnviarMensajePage(), 
+    adminSettings: (_) => const AdminSettingsPage(),
   };
 }

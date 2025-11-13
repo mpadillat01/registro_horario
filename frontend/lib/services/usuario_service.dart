@@ -28,7 +28,6 @@ class EmpleadoService {
     }
   }
 
-  /// ✅ Normalizamos el estado según la API
   static String estadoFromAPI() {
     if (ultimoFichajeEstado == null) return "fuera";
 

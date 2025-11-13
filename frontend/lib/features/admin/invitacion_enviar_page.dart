@@ -25,9 +25,12 @@ class _InvitacionEnviarPageState extends State<InvitacionEnviarPage> {
     try {
       await EmpresaService.sendInvite(email);
       _toast("✅ Invitación enviada correctamente");
-      Navigator.pop(context);
+      Navigator.pop(context, true);
     } catch (e) {
-      _toast("❌ Error al enviar la invitación", error: true);
+      final errorMsg = e.toString().contains("plan")
+          ? e.toString()
+          : "❌ Error al enviar la invitación";
+      _toast(errorMsg, error: true);
     } finally {
       setState(() => loading = false);
     }
@@ -40,6 +43,7 @@ class _InvitacionEnviarPageState extends State<InvitacionEnviarPage> {
         backgroundColor: error ? Colors.redAccent : Colors.green,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        duration: const Duration(seconds: 4),
       ),
     );
   }
@@ -87,7 +91,6 @@ class _InvitacionEnviarPageState extends State<InvitacionEnviarPage> {
                     Icon(Icons.mail_outline_rounded,
                         size: 58, color: color.withOpacity(.9)),
                     const SizedBox(height: 20),
-
                     const Text(
                       "Enviar invitación",
                       style: TextStyle(
@@ -97,17 +100,12 @@ class _InvitacionEnviarPageState extends State<InvitacionEnviarPage> {
                       ),
                     ),
                     const SizedBox(height: 6),
-                    Text(
+                    const Text(
                       "Introduce el email del empleado para invitarlo a la empresa.",
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 15,
-                      ),
+                      style: TextStyle(color: Colors.white70, fontSize: 15),
                     ),
-
                     const SizedBox(height: 26),
-
                     TextField(
                       controller: emailCtrl,
                       keyboardType: TextInputType.emailAddress,
@@ -117,8 +115,8 @@ class _InvitacionEnviarPageState extends State<InvitacionEnviarPage> {
                         hintStyle: const TextStyle(color: Colors.white38),
                         labelText: "Email del empleado",
                         labelStyle: const TextStyle(color: Colors.white70),
-                        prefixIcon:
-                            const Icon(Icons.email_rounded, color: Colors.white70),
+                        prefixIcon: const Icon(Icons.email_rounded,
+                            color: Colors.white70),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(14),
                           borderSide:
@@ -133,9 +131,7 @@ class _InvitacionEnviarPageState extends State<InvitacionEnviarPage> {
                         fillColor: Colors.white.withOpacity(.04),
                       ),
                     ),
-
                     const SizedBox(height: 26),
-
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(

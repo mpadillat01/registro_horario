@@ -102,7 +102,6 @@ class _LoginPageState extends State<LoginPage>
     return Scaffold(
       body: Stack(
         children: [
-          // 🔷 Fondo degradado
           AnimatedContainer(
             duration: const Duration(seconds: 1),
             decoration: BoxDecoration(
@@ -111,18 +110,17 @@ class _LoginPageState extends State<LoginPage>
                     ? [
                         const Color(0xFF0D1117),
                         const Color(0xFF1E2A78),
-                      ] // dark mode
+                      ]
                     : [
                         const Color(0xFF001F5C),
                         const Color(0xFF007BFF),
-                      ], // light mode
+                      ],
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
               ),
             ),
           ),
 
-          // 🔁 Botón modo claro/oscuro arriba derecha
           Positioned(
             top: 40,
             right: 20,
@@ -189,7 +187,6 @@ class _LoginPageState extends State<LoginPage>
 
                         const SizedBox(height: 35),
 
-                        // 📧 Email
                         TextField(
                           controller: emailController,
                           style: TextStyle(
@@ -199,7 +196,6 @@ class _LoginPageState extends State<LoginPage>
                         ),
                         const SizedBox(height: 16),
 
-                        // 🔐 Contraseña
                         TextField(
                           controller: passController,
                           obscureText: !showPassword,
@@ -224,7 +220,6 @@ class _LoginPageState extends State<LoginPage>
 
                         const SizedBox(height: 28),
 
-                        // 🚪 Botón Login
                         SizedBox(
                           width: double.infinity,
                           height: 52,

@@ -8,7 +8,6 @@ from datetime import datetime
 
 router = APIRouter(prefix="/notificaciones", tags=["Notificaciones"])
 
-# ✅ Obtener las notificaciones del usuario actual
 @router.get("/me")
 def get_my_notifications(
     db: Session = Depends(get_db),
@@ -34,7 +33,6 @@ def get_my_notifications(
     ]
 
 
-# ✅ NUEVO — Obtener las notificaciones enviadas por el admin
 @router.get("/enviadas")
 def get_sent_notifications(
     db: Session = Depends(get_db),
@@ -68,8 +66,6 @@ def get_sent_notifications(
         for n in notificaciones
     ]
 
-
-# ✅ Marcar todas las notificaciones como leídas
 @router.post("/mark_all")
 def mark_all_read(
     db: Session = Depends(get_db),
@@ -86,15 +82,12 @@ def mark_all_read(
     db.commit()
     return {"message": f"{updated} notificaciones marcadas como leídas"}
 
-
-# 📨 Enviar mensaje desde admin a empleados
 @router.post("/enviar")
 def enviar_mensaje(
     data: dict = Body(...),
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
-    # 🧠 Solo los administradores pueden usar este endpoint
     if current_user.rol != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -115,7 +108,6 @@ def enviar_mensaje(
     if not empresa_id:
         raise HTTPException(status_code=400, detail="El admin no tiene empresa asociada")
 
-    # ✅ Enviar a todos los empleados de la empresa
     if todos:
         empleados = (
             db.query(Usuario)
@@ -134,7 +126,6 @@ def enviar_mensaje(
             )
             db.add(notif)
     else:
-        # ✅ Enviar a un empleado concreto
         if not usuario_id:
             raise HTTPException(
                 status_code=400,
@@ -155,7 +146,6 @@ def enviar_mensaje(
     return {"message": "Mensaje enviado correctamente"}
 
 
-# 🗑️ Eliminar una notificación específica
 @router.delete("/{id}")
 def delete_notification(
     id: str,

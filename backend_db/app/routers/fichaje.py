@@ -44,7 +44,6 @@ def historial(db: Session = Depends(get_db), user=Depends(get_current_user)):
     data = []
     for f in fichajes:
         if f.fecha_hora:
-            # 🔹 Convertir explícitamente a UTC ISO con "Z"
             fecha_iso = (
                 f.fecha_hora.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
             )
@@ -73,7 +72,6 @@ def obtener_horas_empleado(usuario_id: str, db: Session = Depends(get_db), user=
     if not registros:
         return []
 
-    # 🔹 Agrupamos por día (UTC)
     dias = {}
     for r in registros:
         fecha = r.fecha_hora.date()
@@ -90,7 +88,6 @@ def obtener_horas_empleado(usuario_id: str, db: Session = Depends(get_db), user=
 
         for e in eventos:
             if e.tipo == "entrada":
-                # Si ya había una entrada sin cerrar → asumimos salida automática en este momento
                 if entrada:
                     total += (e.fecha_hora - entrada).total_seconds() - pausa_total
                 entrada = e.fecha_hora
@@ -108,7 +105,6 @@ def obtener_horas_empleado(usuario_id: str, db: Session = Depends(get_db), user=
                 en_pausa = False
 
             elif e.tipo == "salida" and entrada:
-                # Si está en pausa al salir, se descuenta el tiempo
                 if en_pausa and pausa_ini:
                     pausa_total += (e.fecha_hora - pausa_ini).total_seconds()
                     en_pausa = False
@@ -117,7 +113,6 @@ def obtener_horas_empleado(usuario_id: str, db: Session = Depends(get_db), user=
                 pausa_ini = None
                 pausa_total = 0
 
-        # 🟡 Si terminó el día con entrada abierta → asumimos fin de jornada
         if entrada:
             fin_jornada = eventos[-1].fecha_hora
             total += (fin_jornada - entrada).total_seconds() - pausa_total

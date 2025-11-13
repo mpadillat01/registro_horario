@@ -7,21 +7,18 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.usuario import Usuario
 
-# --- CONFIGURACIÓN JWT ---
 SECRET_KEY = "supersecretomuyseguro"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# --- FUNCIONES DE HASH ---
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
-# --- CREACIÓN DE TOKEN ---
 def create_access_token(data: dict, expires_delta: timedelta | None = None):
     """Genera un token JWT con expiración"""
     to_encode = data.copy()
@@ -32,7 +29,6 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-# --- DEPENDENCIA GLOBAL ---
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 def get_current_user(
     token: str = Depends(oauth2_scheme),
@@ -59,10 +55,8 @@ def get_current_user(
             print("❌ El campo 'sub' no existe en el payload")
             raise credentials_exception
 
-        # Intentar buscar por UUID primero
         user = db.query(Usuario).filter(Usuario.id == sub_value).first()
 
-        # Si no lo encuentra, intentar por email (compatibilidad)
         if not user:
             user = db.query(Usuario).filter(Usuario.email == sub_value).first()
 

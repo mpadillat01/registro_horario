@@ -1,4 +1,5 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE TABLE IF NOT EXISTS empresas (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -28,6 +29,7 @@ CREATE TABLE IF NOT EXISTS invitaciones (
     email VARCHAR(150) NOT NULL,
     token UUID NOT NULL UNIQUE,
     usada BOOLEAN DEFAULT FALSE,
+    enviada BOOLEAN DEFAULT FALSE, 
     fecha_creacion TIMESTAMP DEFAULT NOW()
 );
 
@@ -53,6 +55,5 @@ CREATE TABLE IF NOT EXISTS notificaciones (
     fecha_lectura TIMESTAMP NULL
 );
 
--- 🔧 Asegurar que la función UUID esté activa en PostgreSQL
 ALTER TABLE notificaciones
 ALTER COLUMN id SET DEFAULT uuid_generate_v4();

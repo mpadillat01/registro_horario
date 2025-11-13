@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, TIMESTAMP, text
+from sqlalchemy import Column, String, Integer, TIMESTAMP
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from app.database import Base
@@ -11,5 +11,6 @@ class Empresa(Base):
     nombre = Column(String, nullable=False)
     nombre_admin = Column(String, nullable=False)
     email_admin = Column(String, nullable=False, unique=True)
+    plan = Column(String(30), nullable=False, default="starter")  
     max_empleados = Column(Integer, nullable=False)
     fecha_creacion = Column(TIMESTAMP, server_default=func.now())

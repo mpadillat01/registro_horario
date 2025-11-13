@@ -7,19 +7,19 @@ class StorageServiceImpl extends StorageService {
   @override
   Future<void> saveToken(String token) async {
     await _storage.write(key: "token", value: token);
-    print("💾 [MOBILE] Token guardado correctamente en SecureStorage");
+    print(" [MOBILE] Token guardado correctamente en SecureStorage");
   }
 
   @override
   Future<String?> getToken() async {
     final token = await _storage.read(key: "token");
-    print("📤 [MOBILE] Token leído desde SecureStorage → $token");
+    print(" [MOBILE] Token leído desde SecureStorage → $token");
     return token;
   }
 
   @override
   Future<void> deleteToken() async {
     await _storage.delete(key: "token");
-    print("🗑️ [MOBILE] Token eliminado de SecureStorage");
+    print(" [MOBILE] Token eliminado de SecureStorage");
   }
 }

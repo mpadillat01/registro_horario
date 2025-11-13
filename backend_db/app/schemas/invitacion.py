@@ -6,6 +6,7 @@ class InvitacionCreate(BaseModel):
     empresa_id: UUID
     email: EmailStr
 
+
 class InvitacionResponse(BaseModel):
     id: UUID
     empresa_id: UUID
@@ -14,5 +15,9 @@ class InvitacionResponse(BaseModel):
     usada: bool
     fecha_creacion: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = {
+        "from_attributes": True     }
+
+class RegistroEmpleado(BaseModel):
+    nombre: str
+    password: str

@@ -1,14 +1,12 @@
 import 'package:intl/intl.dart';
 
 class FichajeUtils {
-  /// Verifica si dos fechas son del mismo día
   static bool isSameDay(DateTime a, DateTime b) {
     final al = a.toLocal();
     final bl = b.toLocal();
     return al.year == bl.year && al.month == bl.month && al.day == bl.day;
   }
 
-  /// Convierte correctamente UTC → hora local
   static DateTime parseUtcToLocal(String fecha) {
     if (fecha.isEmpty) return DateTime.now();
 
@@ -35,7 +33,6 @@ class FichajeUtils {
     }
   }
 
-  /// ✅ Calcula la duración trabajada en un día (considera pausas)
   static Duration calcularDuracionDia(
     List<Map<String, dynamic>> historial,
     DateTime dia,
@@ -51,37 +48,42 @@ class FichajeUtils {
             ),
           );
 
-    Duration acumulado = Duration.zero;
-    DateTime? ultimaEntrada;
-    DateTime? ultimaPausa;
+    Duration total = Duration.zero;
+    DateTime? entrada;
+    bool enPausa = false;
 
     for (final e in eventos) {
-      final tipo = e["tipo"];
+      final tipo = (e["tipo"] ?? "").toString().toLowerCase();
       final dt = (e["dt"] as DateTime).toLocal();
 
-      if (tipo == "entrada") {
-        ultimaEntrada = dt;
-      } else if (tipo == "inicio_pausa" && ultimaEntrada != null) {
-        acumulado += dt.difference(ultimaEntrada);
-        ultimaEntrada = null;
-        ultimaPausa = dt;
+      if (tipo == "entrada" && !enPausa) {
+        entrada = dt;
+      } else if (tipo == "inicio_pausa" && entrada != null) {
+        final diff = dt.difference(entrada);
+        if (diff.inMinutes > 0 && diff.inHours <= 16) total += diff;
+        entrada = null;
+        enPausa = true;
       } else if (tipo == "fin_pausa") {
-        ultimaPausa = null;
-        ultimaEntrada = dt;
-      } else if (tipo == "salida" && ultimaEntrada != null) {
-        acumulado += dt.difference(ultimaEntrada);
-        ultimaEntrada = null;
+        entrada = dt;
+        enPausa = false;
+      } else if (tipo == "salida" && entrada != null) {
+        final diff = dt.difference(entrada);
+        if (diff.inMinutes > 0 && diff.inHours <= 16) total += diff;
+        entrada = null;
       }
     }
 
-    if (ultimaEntrada != null && ultimaPausa == null) {
-      acumulado += DateTime.now().toLocal().difference(ultimaEntrada);
+    if (entrada != null && !enPausa) {
+      final ahora = DateTime.now().toLocal();
+      final diff = ahora.difference(entrada);
+      if (diff.inMinutes > 0 && diff.inHours <= 12) total += diff;
     }
 
-    return acumulado;
+    if (total.inHours > 24) total = const Duration(hours: 24);
+
+    return total;
   }
 
-  /// ✅ Calcula el total trabajado en todas las fechas del historial
   static Duration calcularTotal(List<Map<String, dynamic>> historial) {
     final dias = <DateTime>{};
     for (final e in historial) {
@@ -96,7 +98,6 @@ class FichajeUtils {
     return total;
   }
 
-  /// ✅ Calcula el total trabajado entre dos fechas (semana / mes)
   static Duration calcularRango(
     List<Map<String, dynamic>> historial,
     DateTime desde,
@@ -119,7 +120,6 @@ class FichajeUtils {
     return total;
   }
 
-  /// Formatea duración HH:mm:ss
   static String format(Duration d) {
     final h = d.inHours.toString().padLeft(2, "0");
     final m = (d.inMinutes % 60).toString().padLeft(2, "0");
@@ -127,7 +127,6 @@ class FichajeUtils {
     return "$h:$m:$s";
   }
 
-  /// Formatea fecha corta
   static String formatFecha(DateTime d) => DateFormat("dd/MM HH:mm").format(d);
 
   static Map<DateTime, Duration> calcularSemana(

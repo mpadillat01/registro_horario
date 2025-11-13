@@ -30,7 +30,6 @@ class _NotificationsPageState extends State<NotificationsPage>
       final user = await AuthService.getCurrentUser();
       isAdmin = (user["rol"] == "admin");
 
-      // 👇 ahora que sabemos si es admin, creamos el TabController
       _tabController ??=
           TabController(length: isAdmin ? 2 : 1, vsync: this);
 

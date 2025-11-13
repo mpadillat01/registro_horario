@@ -112,7 +112,7 @@ class LandingPage extends StatelessWidget {
                         onTap: () => Navigator.pushNamed(
                           context,
                           AppRoutes
-                              .plans, // 👉 ahora primero lleva a los planes
+                              .plans, 
                         ),
                       ),
                     ],

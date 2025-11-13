@@ -46,10 +46,13 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
     _loadAll();
 
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (estadoActual == "entrada") {
-        _computeToday();
+      if (historial.isNotEmpty) {
+        final ultimo = historial.first;
+        if (ultimo["tipo"] == "entrada") {
+          _computeToday();
+          if (mounted) setState(() {});
+        }
       }
-      if (mounted) setState(() {});
     });
 
     Timer.periodic(const Duration(minutes: 1), (_) async {
@@ -212,10 +215,10 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
     final trabajando = estadoActual == "entrada";
     final enPausa = estadoActual == "inicio_pausa";
     final baseColor = switch (estadoActual) {
-      "entrada" => const Color(0xFF00C853), // verde brillante
-      "inicio_pausa" => const Color(0xFFFFC107), // ámbar vivo
-      "salida" => const Color(0xFFE53935), // rojo fuerte
-      _ => const Color(0xFF1E88E5), // azul principal
+      "entrada" => const Color(0xFF00C853),
+      "inicio_pausa" => const Color(0xFFFFC107), 
+      "salida" => const Color(0xFFE53935),
+      _ => const Color(0xFF1E88E5),
     };
 
     final progreso = (workedToday.inSeconds / objetivoDiario.inSeconds).clamp(
@@ -535,10 +538,10 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
               child: Container(
                 height: 64,
                 decoration: BoxDecoration(
-                  color: baseColor.withOpacity(.15), // color plano sutil
+                  color: baseColor.withOpacity(.15),
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
-                    color: baseColor, // borde sólido
+                    color: baseColor,
                     width: 1.6,
                   ),
                 ),
@@ -777,7 +780,6 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Barra superior de arrastre
                     Container(
                       width: 60,
                       height: 5,
@@ -788,7 +790,6 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
                       ),
                     ),
 
-                    // Título
                     Row(
                       children: [
                         Icon(Icons.timeline_rounded, color: color),
@@ -805,12 +806,10 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
                     ),
                     const SizedBox(height: 18),
 
-                    // 🌈 Indicador circular premium
                     _buildAnimatedRing(cumpleHoy, color, total, context),
 
                     const SizedBox(height: 18),
 
-                    // Slider de pausa extra
                     Row(
                       children: [
                         const Icon(Icons.coffee_outlined, size: 18),
@@ -839,7 +838,6 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
 
                     const SizedBox(height: 16),
 
-                    // 🌟 Barras de rendimiento premium con destello
                     _barraInfoAvanzada(
                       icon: Icons.timer_rounded,
                       titulo: "Horas trabajadas",
@@ -886,7 +884,6 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
 
                     const SizedBox(height: 20),
 
-                    // Texto resumen
                     Container(
                       padding: const EdgeInsets.symmetric(
                         vertical: 14,
@@ -908,7 +905,6 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
 
                     const SizedBox(height: 26),
 
-                    // Botón final elegante
                     ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: color,
@@ -963,7 +959,6 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
           child: Stack(
             alignment: Alignment.center,
             children: [
-              // 🔵 Fondo base plano
               Container(
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.surface.withOpacity(.08),
@@ -971,7 +966,6 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
                 ),
               ),
 
-              // 🔵 Anillo simple plano
               CustomPaint(
                 size: const Size(120, 120),
                 painter: _AnimatedRingPainter(
@@ -980,7 +974,6 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
                 ),
               ),
 
-              // 🔵 Texto central
               Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -1047,7 +1040,6 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
             ),
             const SizedBox(height: 6),
 
-            // 🔥 Barra animada con destello
             Stack(
               children: [
                 ClipRRect(
@@ -1372,14 +1364,12 @@ class _AnimatedRingPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = (size.width - stroke) / 2;
 
-    // Fondo del anillo
     final bg = Paint()
       ..color = Colors.grey.withOpacity(0.15)
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke;
     canvas.drawCircle(center, radius, bg);
 
-    // Anillo de progreso color plano (sin gradiente)
     final fg = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
@@ -1578,50 +1568,3 @@ class _ShadowTimelinePainterV2 extends CustomPainter {
       old.worked != worked || old.objetivo != objetivo;
 }
 
-// Dial semicírculo del What-If
-class _DialPainterV2 extends CustomPainter {
-  final double progress; // 0..1
-  _DialPainterV2({required this.progress});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height - 10);
-    final radius = size.width / 2.2;
-
-    final bgPaint = Paint()
-      ..color = Colors.white.withOpacity(0.12)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 6
-      ..strokeCap = StrokeCap.round;
-
-    final fgPaint = Paint()
-      ..color = Colors.lightBlueAccent.shade400
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 6
-      ..strokeCap = StrokeCap.round;
-
-    const startAngle = -pi;
-    const sweepAngle = pi;
-
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: radius),
-      startAngle,
-      sweepAngle,
-      false,
-      bgPaint,
-    );
-
-    if (progress > 0) {
-      canvas.drawArc(
-        Rect.fromCircle(center: center, radius: radius),
-        startAngle,
-        sweepAngle * progress,
-        false,
-        fgPaint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _DialPainterV2 old) => old.progress != progress;
-}

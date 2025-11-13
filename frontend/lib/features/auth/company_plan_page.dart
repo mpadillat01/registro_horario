@@ -22,7 +22,6 @@ class _CompanyPlansPageState extends State<CompanyPlansPage>
       _ => "pro",
     };
 
-    // 🔹 Guarda el plan elegido antes de ir al registro
     try {
       await AuthService.setCompanyPlan(planName);
     } catch (_) {}
@@ -105,7 +104,6 @@ class _CompanyPlansPageState extends State<CompanyPlansPage>
               ),
               const SizedBox(height: 55),
 
-              // 🔹 Fila centrada con cards
               LayoutBuilder(
                 builder: (context, constraints) {
                   final spacing = constraints.maxWidth < 1000 ? 20.0 : 30.0;
@@ -152,7 +150,6 @@ class _CompanyPlansPageState extends State<CompanyPlansPage>
                           clipBehavior: Clip.hardEdge,
                           child: Stack(
                             children: [
-                              // ✨ Efecto Glass / Blur suave
                               if (dark)
                                 BackdropFilter(
                                   filter: ImageFilter.blur(
@@ -167,7 +164,6 @@ class _CompanyPlansPageState extends State<CompanyPlansPage>
                               Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  // Cabecera con gradiente
                                   Container(
                                     height: 90,
                                     decoration: BoxDecoration(
@@ -216,7 +212,6 @@ class _CompanyPlansPageState extends State<CompanyPlansPage>
                                       ],
                                     ),
                                   ),
-                                  // Cuerpo
                                   Expanded(
                                     child: Padding(
                                       padding: const EdgeInsets.all(20),
@@ -300,7 +295,6 @@ class _CompanyPlansPageState extends State<CompanyPlansPage>
 
               const SizedBox(height: 60),
 
-              // 🚀 Botón inferior centrado
               Container(
                 width: 220,
                 height: 55,

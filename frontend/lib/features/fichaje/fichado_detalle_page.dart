@@ -101,13 +101,13 @@ class _FichadoDetallePageState extends State<FichadoDetallePage>
   Color estadoColor(String e) {
     switch (e) {
       case "entrada":
-        return const Color(0xFF4B7BFF); // azul vibrante
+        return const Color(0xFF4B7BFF); 
       case "inicio_pausa":
-        return const Color(0xFFFFC04D); // ámbar cálido
+        return const Color(0xFFFFC04D); 
       case "salida":
-        return const Color(0xFFFF5C5C); // rojo coral intenso
+        return const Color(0xFFFF5C5C); 
       default:
-        return const Color(0xFF9CA3AF); // gris neutro
+        return const Color(0xFF9CA3AF); 
     }
   }
 
@@ -376,8 +376,8 @@ class _FichadoDetallePageState extends State<FichadoDetallePage>
     return diasOrdenados.map((d) {
       final duracion = FichajeUtils.calcularDuracionDia(historial, d);
       final color = duracion.inHours >= 8
-    ? const Color(0xFF4CAF50) // verde brillante natural (Material Green 500)
-    : const Color(0xFFFFC04D); // ámbar cálido
+    ? const Color(0xFF4CAF50) 
+    : const Color(0xFFFFC04D); 
 
 
       return Padding(
@@ -430,7 +430,6 @@ class _FichadoDetallePageState extends State<FichadoDetallePage>
   }
 }
 
-// 🎨 Anillo animado con más color, sin aura
 class _AnimatedRingPainter extends CustomPainter {
   final double progress;
   final Color color;
@@ -443,14 +442,12 @@ class _AnimatedRingPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = (size.width - stroke) / 2;
 
-    // Fondo tenue
     final bg = Paint()
       ..color = Colors.white.withOpacity(.07)
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke;
     canvas.drawCircle(center, radius, bg);
 
-    // Gradiente más colorido, sin brillo difuso
     final gradient = SweepGradient(
       startAngle: -pi / 2,
       endAngle: 2 * pi * progress - pi / 2,

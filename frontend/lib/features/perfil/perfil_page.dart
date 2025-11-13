@@ -1,9 +1,9 @@
-// 🔥 PERFIL PAGE — Colores vivos, sin aura ni brillo difuso
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:table_calendar/table_calendar.dart';
 import 'package:registro_horario/utils/fichaje_utils.dart';
 import '../../services/auth_service.dart';
 import '../../services/fichaje_service.dart';
@@ -58,8 +58,7 @@ class _PerfilPageState extends State<PerfilPage> {
           "tipo": e["tipo"],
           "dt": FichajeUtils.parseUtcToLocal(e["fecha_hora"] ?? ""),
         };
-      }).toList()
-        ..sort((a, b) => b["dt"].compareTo(a["dt"]));
+      }).toList()..sort((a, b) => b["dt"].compareTo(a["dt"]));
     }
 
     final ultimo = await FichajeService.getUltimo(user!["id"]);
@@ -68,21 +67,33 @@ class _PerfilPageState extends State<PerfilPage> {
           .toString()
           .toLowerCase();
       final fecha = ultimo["hora"] ?? ultimo["fecha_hora"];
-      entradaActual =
-          estado.contains("entrada") ? FichajeUtils.parseUtcToLocal(fecha) : null;
+      entradaActual = estado.contains("entrada")
+          ? FichajeUtils.parseUtcToLocal(fecha)
+          : null;
     }
 
     final now = DateTime.now();
-    totalHoras = FichajeUtils.calcularTotal(historial).inHours.toDouble();
-    hoy = FichajeUtils.calcularDuracionDia(historial, now).inHours.toDouble();
-    horasSemana = FichajeUtils
-        .calcularRango(historial, now.subtract(Duration(days: now.weekday - 1)), now)
-        .inHours
-        .toDouble();
-    horasMes = FichajeUtils
-        .calcularRango(historial, DateTime(now.year, now.month, 1), now)
-        .inHours
-        .toDouble();
+
+    double toHorasConDecimales(Duration d) =>
+        d.inHours + (d.inMinutes % 60) / 60.0;
+
+    final totalDur = FichajeUtils.calcularTotal(historial);
+    final hoyDur = FichajeUtils.calcularDuracionDia(historial, now);
+    final semanaDur = FichajeUtils.calcularRango(
+      historial,
+      now.subtract(Duration(days: now.weekday - 1)),
+      now,
+    );
+    final mesDur = FichajeUtils.calcularRango(
+      historial,
+      DateTime(now.year, now.month, 1),
+      now,
+    );
+
+    totalHoras = toHorasConDecimales(totalDur);
+    hoy = toHorasConDecimales(hoyDur);
+    horasSemana = toHorasConDecimales(semanaDur);
+    horasMes = toHorasConDecimales(mesDur);
 
     if (mounted) setState(() => cargando = false);
   }
@@ -92,8 +103,9 @@ class _PerfilPageState extends State<PerfilPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final colorPrincipal =
-        entradaActual != null ? Colors.greenAccent.shade400 : Colors.blueAccent.shade400;
+    final colorPrincipal = entradaActual != null
+        ? Colors.greenAccent.shade400
+        : Colors.blueAccent.shade400;
     final nombre = user?["nombre"] ?? "Usuario";
     final email = user?["email"] ?? "";
 
@@ -162,8 +174,9 @@ class _PerfilPageState extends State<PerfilPage> {
                             email,
                             style: TextStyle(
                               fontSize: 15,
-                              color:
-                                  isDark ? Colors.white70 : Colors.grey.shade700,
+                              color: isDark
+                                  ? Colors.white70
+                                  : Colors.grey.shade700,
                             ),
                           ),
                         ],
@@ -175,20 +188,40 @@ class _PerfilPageState extends State<PerfilPage> {
               const SizedBox(height: 24),
               Row(
                 children: [
-                  Expanded(child: _metric("Hoy", f(hoy), colorPrincipal, isDark)),
+                  Expanded(
+                    child: _metric("Hoy", f(hoy), colorPrincipal, isDark),
+                  ),
                   const SizedBox(width: 14),
-                  Expanded(child: _metric("Semana", f(horasSemana), colorPrincipal, isDark)),
+                  Expanded(
+                    child: _metric(
+                      "Semana",
+                      f(horasSemana),
+                      colorPrincipal,
+                      isDark,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 14),
               Row(
                 children: [
-                  Expanded(child: _metric("Mes", f(horasMes), colorPrincipal, isDark)),
+                  Expanded(
+                    child: _metric("Mes", f(horasMes), colorPrincipal, isDark),
+                  ),
                   const SizedBox(width: 14),
-                  Expanded(child: _metric("Total", f(totalHoras), colorPrincipal, isDark)),
+                  Expanded(
+                    child: _metric(
+                      "Total",
+                      f(totalHoras),
+                      colorPrincipal,
+                      isDark,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 32),
+              _buildCalendario(isDark),
+              const SizedBox(height: 40),
               _buildHistorialCard(isDark),
               const SizedBox(height: 40),
               _logoutButton(),
@@ -199,9 +232,279 @@ class _PerfilPageState extends State<PerfilPage> {
     );
   }
 
-  // -------------------------------
-  // AVATAR
-  // -------------------------------
+  Widget _buildCalendario(bool dark) {
+    final txt = dark ? Colors.white70 : Colors.black87;
+    final colorPrincipal = entradaActual != null
+        ? Colors.greenAccent.shade400
+        : Colors.blueAccent.shade400;
+
+    final Map<DateTime, double> horasPorDia = {};
+    for (var h in historial) {
+      final fecha = DateTime(h["dt"].year, h["dt"].month, h["dt"].day);
+      final duracion = FichajeUtils.calcularDuracionDia(historial, fecha);
+      horasPorDia[fecha] = duracion.inHours + (duracion.inMinutes % 60) / 60.0;
+    }
+
+    final festivos = <DateTime>{
+      DateTime(2025, 1, 1),
+      DateTime(2025, 1, 6),
+      DateTime(2025, 4, 17),
+      DateTime(2025, 4, 18),
+      DateTime(2025, 4, 21),
+      DateTime(2025, 5, 1),
+      DateTime(2025, 8, 15),
+      DateTime(2025, 10, 12),
+      DateTime(2025, 11, 1),
+      DateTime(2025, 12, 6),
+      DateTime(2025, 12, 8),
+      DateTime(2025, 12, 25),
+      DateTime(2026, 1, 1),
+      DateTime(2026, 1, 6),
+      DateTime(2026, 4, 2),
+      DateTime(2026, 4, 3),
+      DateTime(2026, 4, 6),
+      DateTime(2026, 5, 1),
+      DateTime(2026, 8, 15),
+      DateTime(2026, 10, 12),
+      DateTime(2026, 11, 1),
+      DateTime(2026, 12, 6),
+      DateTime(2026, 12, 8),
+      DateTime(2026, 12, 25),
+    };
+
+    DateTime diaSeleccionado = DateTime.now();
+    List<Map<String, dynamic>> eventosDelDia = [];
+    bool inicializado = false;
+
+    return StatefulBuilder(
+      builder: (context, setState) {
+        if (!inicializado) {
+          inicializado = true;
+          eventosDelDia =
+              historial
+                  .where(
+                    (e) => FichajeUtils.isSameDay(e["dt"], diaSeleccionado),
+                  )
+                  .toList()
+                ..sort((a, b) => a["dt"].compareTo(b["dt"]));
+        }
+
+        void actualizarDia(DateTime selectedDay) {
+          setState(() {
+            diaSeleccionado = selectedDay;
+            eventosDelDia =
+                historial
+                    .where((e) => FichajeUtils.isSameDay(e["dt"], selectedDay))
+                    .toList()
+                  ..sort((a, b) => a["dt"].compareTo(b["dt"]));
+          });
+        }
+
+        final duracionSel = FichajeUtils.calcularDuracionDia(
+          historial,
+          diaSeleccionado,
+        );
+        final horasSel = duracionSel.inHours;
+        final minutosSel = duracionSel.inMinutes % 60;
+        final esFestivo = festivos.any(
+          (f) => FichajeUtils.isSameDay(f, diaSeleccionado),
+        );
+
+        String resumen;
+        Color resumenColor;
+
+        if (esFestivo) {
+          resumen = "🎉 Día festivo en España";
+          resumenColor = Colors.redAccent;
+        } else if (eventosDelDia.isEmpty) {
+          resumen = "🚫 No hay fichajes registrados";
+          resumenColor = Colors.grey;
+        } else if (duracionSel.inMinutes > 0) {
+          resumen = "💼 Has trabajado ${horasSel}h ${minutosSel}m";
+          resumenColor = colorPrincipal;
+        } else {
+          resumen = "📋 Fichajes sin duración (en pausa o sin salida)";
+          resumenColor = Colors.orangeAccent;
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "Calendario laboral",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+                color: txt,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                color: dark ? Colors.white10 : Colors.white,
+              ),
+              child: SizedBox(
+                height: 420,
+                child: TableCalendar(
+                  locale: 'es_ES',
+                  firstDay: DateTime.utc(2024, 1, 1),
+                  lastDay: DateTime.utc(2030, 12, 31),
+                  focusedDay: diaSeleccionado,
+                  selectedDayPredicate: (day) =>
+                      FichajeUtils.isSameDay(day, diaSeleccionado),
+                  onDaySelected: (selectedDay, _) => actualizarDia(selectedDay),
+                  startingDayOfWeek: StartingDayOfWeek.monday,
+                  calendarStyle: CalendarStyle(
+                    todayDecoration: BoxDecoration(
+                      color: colorPrincipal.withOpacity(.35),
+                      shape: BoxShape.circle,
+                    ),
+                    selectedDecoration: BoxDecoration(
+                      color: colorPrincipal,
+                      shape: BoxShape.circle,
+                    ),
+                    weekendTextStyle: const TextStyle(color: Colors.redAccent),
+                    defaultTextStyle: TextStyle(
+                      color: dark ? Colors.white : Colors.black,
+                    ),
+                    outsideDaysVisible: false,
+                  ),
+                  daysOfWeekStyle: DaysOfWeekStyle(
+                    weekdayStyle: TextStyle(
+                      color: dark ? Colors.white70 : Colors.black87,
+                    ),
+                    weekendStyle: const TextStyle(color: Colors.redAccent),
+                  ),
+                  headerStyle: HeaderStyle(
+                    titleCentered: true,
+                    formatButtonVisible: false,
+                    titleTextStyle: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: colorPrincipal,
+                    ),
+                    leftChevronIcon: Icon(
+                      Icons.chevron_left,
+                      color: colorPrincipal,
+                    ),
+                    rightChevronIcon: Icon(
+                      Icons.chevron_right,
+                      color: colorPrincipal,
+                    ),
+                  ),
+                  calendarBuilders: CalendarBuilders(
+                    defaultBuilder: (context, day, _) {
+                      final isFestivo = festivos.any(
+                        (f) => FichajeUtils.isSameDay(f, day),
+                      );
+                      final horas = horasPorDia[day] ?? 0;
+
+                      Color bgColor = Colors.transparent;
+                      if (isFestivo) {
+                        bgColor = Colors.redAccent.withOpacity(.25);
+                      } else if (horas > 0) {
+                        bgColor = Colors.greenAccent.withOpacity(.15);
+                      } else if (day.weekday >= 6) {
+                        bgColor = Colors.blueAccent.withOpacity(.08);
+                      }
+
+                      return Container(
+                        margin: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: bgColor,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          '${day.day}',
+                          style: TextStyle(
+                            color: dark ? Colors.white : Colors.black,
+                            fontWeight: horas > 0
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Center(
+              child: Text(
+                resumen,
+                style: TextStyle(
+                  color: resumenColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+            if (eventosDelDia.isNotEmpty) ...[
+              const SizedBox(height: 18),
+              Text(
+                "Fichajes del ${DateFormat('d MMMM', 'es_ES').format(diaSeleccionado)}",
+                style: TextStyle(
+                  color: txt,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 8),
+              ...eventosDelDia.map((e) {
+                final tipo = (e["tipo"] ?? "").toString().toLowerCase();
+                final fecha = e["dt"] as DateTime;
+                final color = switch (tipo) {
+                  "entrada" => Colors.greenAccent.shade400,
+                  "salida" => Colors.redAccent.shade400,
+                  "inicio_pausa" => Colors.amberAccent.shade400,
+                  "fin_pausa" => Colors.cyanAccent.shade400,
+                  _ => Colors.grey,
+                };
+                return Container(
+                  margin: const EdgeInsets.symmetric(vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    color: dark
+                        ? Colors.white10
+                        : Colors.black.withOpacity(.04),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.access_time, color: color, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          tipo.toUpperCase(),
+                          style: TextStyle(
+                            color: color,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        DateFormat("HH:mm").format(fecha),
+                        style: TextStyle(
+                          color: dark ? Colors.white70 : Colors.black54,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
   Widget _avatar(String nombre, Color color, bool dark) {
     final inicial = nombre.isNotEmpty ? nombre[0].toUpperCase() : "U";
     return Center(
@@ -216,7 +519,9 @@ class _PerfilPageState extends State<PerfilPage> {
             ),
             child: CircleAvatar(
               radius: 52,
-              backgroundColor: dark ? Colors.white12 : Colors.black.withOpacity(.06),
+              backgroundColor: dark
+                  ? Colors.white12
+                  : Colors.black.withOpacity(.06),
               child: Text(
                 inicial,
                 style: TextStyle(
@@ -234,10 +539,7 @@ class _PerfilPageState extends State<PerfilPage> {
               onTap: () => setState(() => editando = !editando),
               child: Container(
                 padding: const EdgeInsets.all(7),
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
-                ),
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
                 child: const Icon(Icons.edit, size: 18, color: Colors.black),
               ),
             ),
@@ -248,35 +550,40 @@ class _PerfilPageState extends State<PerfilPage> {
   }
 
   Widget _editarPerfil(bool dark, Color color) => Column(
-        children: [
-          _input(nombreCtrl, "Nombre", color, dark),
-          const SizedBox(height: 12),
-          _input(apellidosCtrl, "Apellidos", color, dark),
-          const SizedBox(height: 12),
-          _input(emailCtrl, "Email", color, dark),
-          const SizedBox(height: 12),
-          _input(dniCtrl, "DNI", color, dark),
-          const SizedBox(height: 20),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: color,
-              foregroundColor: Colors.black,
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            onPressed: () {
-              _toast("✅ Perfil actualizado correctamente");
-              setState(() => editando = false);
-            },
-            icon: const Icon(Icons.save),
-            label: const Text("Guardar"),
+    children: [
+      _input(nombreCtrl, "Nombre", color, dark),
+      const SizedBox(height: 12),
+      _input(apellidosCtrl, "Apellidos", color, dark),
+      const SizedBox(height: 12),
+      _input(emailCtrl, "Email", color, dark),
+      const SizedBox(height: 12),
+      _input(dniCtrl, "DNI", color, dark),
+      const SizedBox(height: 20),
+      ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color,
+          foregroundColor: Colors.black,
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
           ),
-        ],
-      );
+        ),
+        onPressed: () {
+          _toast("✅ Perfil actualizado correctamente");
+          setState(() => editando = false);
+        },
+        icon: const Icon(Icons.save),
+        label: const Text("Guardar"),
+      ),
+    ],
+  );
 
-  Widget _input(TextEditingController ctrl, String label, Color color, bool dark) {
+  Widget _input(
+    TextEditingController ctrl,
+    String label,
+    Color color,
+    bool dark,
+  ) {
     return TextField(
       controller: ctrl,
       style: TextStyle(color: dark ? Colors.white : Colors.black),
@@ -297,9 +604,6 @@ class _PerfilPageState extends State<PerfilPage> {
     );
   }
 
-  // -------------------------------
-  // CHIP Y MÉTRICAS
-  // -------------------------------
   Widget _chipEstado(bool trabajando, Color color) {
     final label = trabajando ? "Trabajando" : "Fuera de servicio";
     return Center(
@@ -353,9 +657,6 @@ class _PerfilPageState extends State<PerfilPage> {
     );
   }
 
-  // -------------------------------
-  // HISTORIAL
-  // -------------------------------
   Widget _buildHistorialCard(bool dark) {
     final txt = dark ? Colors.white70 : Colors.black87;
     if (historial.isEmpty) {
@@ -411,8 +712,11 @@ class _PerfilPageState extends State<PerfilPage> {
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.calendar_today_rounded,
-                            size: 16, color: Colors.amberAccent.shade400),
+                        Icon(
+                          Icons.calendar_today_rounded,
+                          size: 16,
+                          color: Colors.amberAccent.shade400,
+                        ),
                         const SizedBox(width: 6),
                         Text(
                           esHoy
@@ -481,27 +785,24 @@ class _PerfilPageState extends State<PerfilPage> {
     );
   }
 
-  // -------------------------------
-  // LOGOUT
-  // -------------------------------
   Widget _logoutButton() => ElevatedButton.icon(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.redAccent.shade400,
-          foregroundColor: Colors.white,
-          minimumSize: const Size(double.infinity, 50),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        ),
-        icon: const Icon(Icons.logout_rounded),
-        label: const Text(
-          "Cerrar sesión",
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        onPressed: () async {
-          await AuthService.logout();
-          if (!mounted) return;
-          Navigator.pushNamedAndRemoveUntil(context, "/login", (_) => false);
-        },
-      );
+    style: ElevatedButton.styleFrom(
+      backgroundColor: Colors.redAccent.shade400,
+      foregroundColor: Colors.white,
+      minimumSize: const Size(double.infinity, 50),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    ),
+    icon: const Icon(Icons.logout_rounded),
+    label: const Text(
+      "Cerrar sesión",
+      style: TextStyle(fontWeight: FontWeight.bold),
+    ),
+    onPressed: () async {
+      await AuthService.logout();
+      if (!mounted) return;
+      Navigator.pushNamedAndRemoveUntil(context, "/login", (_) => false);
+    },
+  );
 
   void _toast(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
