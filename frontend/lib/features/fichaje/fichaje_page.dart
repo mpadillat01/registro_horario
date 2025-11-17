@@ -216,7 +216,7 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
     final enPausa = estadoActual == "inicio_pausa";
     final baseColor = switch (estadoActual) {
       "entrada" => const Color(0xFF00C853),
-      "inicio_pausa" => const Color(0xFFFFC107), 
+      "inicio_pausa" => const Color(0xFFFFC107),
       "salida" => const Color(0xFFE53935),
       _ => const Color(0xFF1E88E5),
     };
@@ -540,10 +540,7 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
                 decoration: BoxDecoration(
                   color: baseColor.withOpacity(.15),
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: baseColor,
-                    width: 1.6,
-                  ),
+                  border: Border.all(color: baseColor, width: 1.6),
                 ),
                 alignment: Alignment.center,
                 child: loading
@@ -704,11 +701,11 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
     final trabajando = estadoActual == "entrada";
     int pausaExtra = 0;
 
-    DateTime salidaPrevista;
+    DateTime salidaBase;
     if (trabajando && ultimaMarca != null) {
-      salidaPrevista = ultimaMarca!.add(const Duration(hours: 8));
+      salidaBase = ultimaMarca!.add(const Duration(hours: 8));
     } else {
-      salidaPrevista = ahora.add(const Duration(hours: 8));
+      salidaBase = ahora.add(const Duration(hours: 8));
     }
 
     Timer? timer;
@@ -729,8 +726,14 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
             });
 
             final total = workedToday - Duration(minutes: pausaExtra);
+
+            final salidaPrevistaCalc = salidaBase.add(
+              Duration(minutes: pausaExtra),
+            );
+
             final faltaPara8h = objetivoDiario - total;
             final cumpleHoy = faltaPara8h.isNegative;
+
             final porcentaje =
                 (total.inSeconds / objetivoDiario.inSeconds * 100)
                     .clamp(0, 150)
@@ -739,12 +742,13 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
             final deficitSemana = _deficitSemanalRespectoObjetivo(
               simHoy: total,
             );
+
             final color = cumpleHoy ? Colors.greenAccent : Colors.amberAccent;
             final onSurface = Theme.of(context).colorScheme.onSurface;
 
             final textoResumen = trabajando
-                ? "Si mantienes tu ritmo actual, cumplirás las 8h a las ${DateFormat('HH:mm').format(salidaPrevista)}."
-                : "Tu jornada estimada finalizaría a las ${DateFormat('HH:mm').format(salidaPrevista)} si trabajases 8h.";
+                ? "Si mantienes tu ritmo actual, cumplirás las 8h a las ${DateFormat('HH:mm').format(salidaPrevistaCalc)}."
+                : "Tu jornada estimada finalizaría a las ${DateFormat('HH:mm').format(salidaPrevistaCalc)} si trabajases 8h.";
 
             return AnimatedContainer(
               duration: const Duration(milliseconds: 400),
@@ -828,8 +832,9 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
                               max: 90,
                               divisions: 9,
                               label: "${pausaExtra} min pausa",
-                              onChanged: (v) =>
-                                  setS(() => pausaExtra = v.round()),
+                              onChanged: (v) {
+                                setS(() => pausaExtra = v.round());
+                              },
                             ),
                           ),
                         ),
@@ -848,6 +853,7 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
                           ? "Faltan ${_fmtHM(faltaPara8h.abs())} para completar la jornada"
                           : "Has cumplido el objetivo diario 🎯",
                     ),
+
                     const SizedBox(height: 12),
 
                     _barraInfoAvanzada(
@@ -862,6 +868,7 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
                           ? "Mantén el ritmo 💪"
                           : "Último tramo, casi logras las 8h 🏁",
                     ),
+
                     const SizedBox(height: 12),
 
                     _barraInfoAvanzada(
@@ -918,7 +925,7 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
                       ),
                       icon: const Icon(Icons.bolt_rounded, size: 22),
                       label: Text(
-                        "Salida prevista: ${DateFormat('HH:mm').format(salidaPrevista)}",
+                        "Salida prevista: ${DateFormat('HH:mm').format(salidaPrevistaCalc)}",
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -1083,50 +1090,6 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
         );
       },
     );
-  }
-
-  Widget _barraInfo(String titulo, String valor, Color color, double progreso) {
-    progreso = progreso.clamp(0.0, 1.0);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              titulo,
-              style: const TextStyle(fontSize: 13, color: Colors.white70),
-            ),
-            Text(
-              valor,
-              style: TextStyle(fontWeight: FontWeight.w600, color: color),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: LinearProgressIndicator(
-            value: progreso,
-            minHeight: 6,
-            backgroundColor: Colors.white12,
-            valueColor: AlwaysStoppedAnimation(color),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Duration _simularTotalHoy({
-    required DateTime salida,
-    required int pausaExtraMin,
-  }) {
-    Duration total = workedToday;
-
-    total -= Duration(minutes: pausaExtraMin);
-    if (total.isNegative) total = Duration.zero;
-
-    return total;
   }
 
   Duration _deficitSemanalRespectoObjetivo({required Duration simHoy}) {
@@ -1567,4 +1530,3 @@ class _ShadowTimelinePainterV2 extends CustomPainter {
   bool shouldRepaint(covariant _ShadowTimelinePainterV2 old) =>
       old.worked != worked || old.objetivo != objetivo;
 }
-

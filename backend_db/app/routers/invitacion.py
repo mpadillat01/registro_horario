@@ -14,15 +14,18 @@ from app.security import SECRET_KEY, ALGORITHM, hash_password
 router = APIRouter(prefix="/invitaciones", tags=["Invitaciones"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
+
 def get_user_from_token(token: str, db: Session):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id = payload.get("sub")
         if not user_id:
             raise HTTPException(status_code=401, detail="Token inválido")
+
         user = db.query(Usuario).filter(Usuario.id == user_id).first()
         if not user:
             raise HTTPException(status_code=401, detail="Usuario no encontrado")
+
         return user
     except JWTError:
         raise HTTPException(status_code=401, detail="Token inválido o expirado")
@@ -34,12 +37,10 @@ def enviar_invitacion(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ):
-    """
-    Guarda la invitación en BD y llama al workflow de n8n
-    (respetando el límite del plan de la empresa)
-    """
+
     try:
         user = get_user_from_token(token, db)
+
         if user.rol != "admin":
             raise HTTPException(status_code=403, detail="Solo los administradores pueden enviar invitaciones")
 
@@ -52,19 +53,13 @@ def enviar_invitacion(
             Usuario.rol == "empleado"
         ).count()
 
-        invitaciones_pendientes = db.query(Invitacion).filter(
-            Invitacion.empresa_id == empresa.id,
-            Invitacion.usada == False
-        ).count()
+        print("🔍 empleados reales:", empleados)
+        print("🔍 límite máximo:", empresa.max_empleados)
 
-        total_proximos = empleados + invitaciones_pendientes
-        if total_proximos >= empresa.max_empleados:
+        if empleados >= empresa.max_empleados:
             raise HTTPException(
                 status_code=400,
-                detail=(
-                    f"Tu plan ({empresa.plan}) permite un máximo de "
-                    f"{empresa.max_empleados} empleados. No puedes enviar más invitaciones."
-                ),
+                detail=f"Has alcanzado el límite de empleados de tu plan ({empresa.plan})."
             )
 
         invitacion = Invitacion(
@@ -78,6 +73,7 @@ def enviar_invitacion(
         db.refresh(invitacion)
 
         n8n_url = "http://n8n:5678/webhook/V7Rpg33njJiJP2aK"
+
         payload = {
             "email_empleado": invitacion.email,
             "empresa_id": str(invitacion.empresa_id),
@@ -85,12 +81,7 @@ def enviar_invitacion(
             "token_invitacion": str(invitacion.token),
         }
 
-        print(f"📤 Enviando datos a n8n → {n8n_url}")
-        print(f"📦 Payload → {payload}")
-
         res = requests.post(n8n_url, json=payload, timeout=10)
-        print(f"📡 Respuesta n8n: {res.status_code} → {res.text}")
-
         if res.status_code not in (200, 201):
             raise HTTPException(status_code=500, detail="Error al enviar correo con n8n")
 

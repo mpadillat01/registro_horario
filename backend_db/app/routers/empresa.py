@@ -11,7 +11,7 @@ router = APIRouter(prefix="/empresa", tags=["Empresa"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 PLAN_LIMITS = {
-    "starter": 3,
+    "starter": 5,
     "pro": 25,
     "enterprise": 999999,
 }

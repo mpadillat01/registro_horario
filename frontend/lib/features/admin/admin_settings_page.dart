@@ -1,9 +1,19 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:ui';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
+import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:registro_horario/services/web_download.dart';
+import 'package:url_launcher/url_launcher.dart';
+
 import 'package:registro_horario/services/api_service.dart';
+import 'package:registro_horario/services/auth_service.dart';
+import 'package:registro_horario/services/documento_service.dart';
 
 class AdminSettingsPage extends StatefulWidget {
   const AdminSettingsPage({super.key});
@@ -21,16 +31,59 @@ class _AdminSettingsPageState extends State<AdminSettingsPage>
   final emailCtrl = TextEditingController();
   final empleadosCtrl = TextEditingController();
 
+  List documentos = [];
+  bool loadingDocs = false;
+
   Map<String, dynamic>? empresaData;
+
+  List<Map<String, dynamic>> empleados = [];
+  Map<String, dynamic>? empleadoSeleccionado;
+  bool cargandoEmpleados = false;
 
   @override
   void initState() {
     super.initState();
     _loadEmpresa();
+    cargarEmpleados();
+  }
+
+  Future<void> cargarEmpleados() async {
+    setState(() => cargandoEmpleados = true);
+
+    try {
+      final res = await ApiService.get("/usuarios/empleados");
+      empleados = List<Map<String, dynamic>>.from(res);
+    } catch (e) {
+      print("❌ Error cargando empleados: $e");
+    }
+
+    setState(() => cargandoEmpleados = false);
+  }
+
+  Future<void> _loadDocumentos() async {
+    setState(() => loadingDocs = true);
+
+    try {
+      final usuario = await AuthService.getCurrentUser();
+      final usuarioId = usuario["id"];
+
+      if (usuarioId == null) {
+        documentos = [];
+      } else {
+        documentos = await DocumentoService.listarDocumentos(
+          usuarioId.toString(),
+        );
+      }
+    } catch (e) {
+      print("❌ Error cargando documentos: $e");
+    }
+
+    if (mounted) setState(() => loadingDocs = false);
   }
 
   Future<void> _loadEmpresa() async {
     setState(() => loading = true);
+
     try {
       final headers = await ApiService.authHeaders();
       final res = await http.get(
@@ -40,15 +93,18 @@ class _AdminSettingsPageState extends State<AdminSettingsPage>
 
       if (res.statusCode == 200) {
         empresaData = jsonDecode(res.body);
+
         empresaCtrl.text = empresaData?["nombre"] ?? "";
         emailCtrl.text = empresaData?["email_admin"] ?? "";
         empleadosCtrl.text = (empresaData?["max_empleados"] ?? 0).toString();
 
-        final plan = (empresaData?["plan"] ?? "pro").toString();
+        final plan = (empresaData?["plan"] ?? "pro");
         selectedPlan = _planIndex(plan);
+
+        await _loadDocumentos();
       }
     } catch (e) {
-      debugPrint("❌ Error cargando empresa: $e");
+      print("❌ Error cargando empresa: $e");
     } finally {
       setState(() => loading = false);
     }
@@ -67,6 +123,7 @@ class _AdminSettingsPageState extends State<AdminSettingsPage>
 
   Future<void> _saveChanges() async {
     setState(() => loading = true);
+
     final planName = switch (selectedPlan) {
       0 => "starter",
       1 => "pro",
@@ -76,10 +133,11 @@ class _AdminSettingsPageState extends State<AdminSettingsPage>
 
     try {
       final headers = await ApiService.authHeaders();
+
       final body = jsonEncode({
         "nombre": empresaCtrl.text.trim(),
-        "email_contacto": emailCtrl.text.trim(),
-        "num_empleados": int.tryParse(empleadosCtrl.text) ?? 0,
+        "nombre_admin": empresaData?["nombre_admin"],
+        "email_admin": emailCtrl.text.trim(),
         "plan": planName,
       });
 
@@ -92,28 +150,322 @@ class _AdminSettingsPageState extends State<AdminSettingsPage>
       if (res.statusCode == 200) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("✅ Ajustes actualizados correctamente",
-                style: GoogleFonts.inter(fontWeight: FontWeight.w500)),
+            content: Text(
+              "✅ Ajustes actualizados",
+              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+            ),
             backgroundColor: Colors.greenAccent.shade400,
-            behavior: SnackBarBehavior.floating,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
         );
+        _loadEmpresa();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("❌ Error al actualizar (${res.statusCode})",
-                style: GoogleFonts.inter()),
+            content: Text(
+              "❌ Error (${res.statusCode})",
+              style: GoogleFonts.inter(),
+            ),
             backgroundColor: Colors.redAccent.shade400,
           ),
         );
       }
     } catch (e) {
-      debugPrint("❌ Error al guardar: $e");
+      print("❌ Error al guardar: $e");
     } finally {
       setState(() => loading = false);
     }
+  }
+
+  Widget _buildDocumentosSection(bool dark) {
+    final txt = dark ? Colors.white70 : Colors.black87;
+    final glass = dark ? Colors.white12 : Colors.white.withOpacity(.85);
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: glass,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    Icons.folder_copy_rounded,
+                    color: Colors.blueAccent,
+                    size: 28,
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    "Documentos de la empresa",
+                    style: GoogleFonts.poppins(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w600,
+                      color: txt,
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 20),
+
+              Center(
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    final result = await FilePicker.platform.pickFiles(
+                      withData: true,
+                    );
+                    if (result == null) return;
+
+                    final file = result.files.single;
+                    bool ok = false;
+
+                    final user = await AuthService.getCurrentUser();
+
+                    if (kIsWeb) {
+                      ok = await DocumentoService.subirDocumentoWeb(
+                        user["id"],
+                        "empresa",
+                        file.bytes!,
+                        file.name,
+                      );
+                    } else {
+                      ok = await DocumentoService.subirDocumento(
+                        user["id"],
+                        "empresa",
+                        File(file.path!),
+                      );
+                    }
+
+                    if (ok) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("📤 Documento subido"),
+                          backgroundColor: Colors.greenAccent,
+                        ),
+                      );
+                      _loadDocumentos();
+                    }
+                  },
+                  icon: const Icon(Icons.upload_file_rounded),
+                  label: const Text("Subir documento"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blueAccent,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 22,
+                      vertical: 14,
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              Text(
+                "Selecciona empleado para informe:",
+                style: TextStyle(color: txt, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 10),
+
+              cargandoEmpleados
+                  ? const Center(child: CircularProgressIndicator())
+                  : Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(14),
+                        color: dark ? Colors.white10 : Colors.white,
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<Map<String, dynamic>>(
+                          hint: Text(
+                            "Elegir empleado",
+                            style: TextStyle(color: txt.withOpacity(.6)),
+                          ),
+                          value: empleadoSeleccionado,
+                          isExpanded: true,
+                          items: empleados
+                              .map<DropdownMenuItem<Map<String, dynamic>>>((
+                                emp,
+                              ) {
+                                return DropdownMenuItem(
+                                  value: emp,
+                                  child: Text(
+                                    emp["nombre"] ?? emp["email"],
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                );
+                              })
+                              .toList(),
+                          onChanged: (value) {
+                            setState(() {
+                              empleadoSeleccionado = value;
+                            });
+                          },
+                        ),
+                      ),
+                    ),
+
+              const SizedBox(height: 20),
+
+              Center(
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.analytics_rounded),
+                  label: const Text("Descargar informe semanal"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orangeAccent,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 22,
+                      vertical: 14,
+                    ),
+                  ),
+                  onPressed: () async {
+                    if (empleadoSeleccionado == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text("Selecciona un empleado primero 👇"),
+                          backgroundColor: Colors.redAccent,
+                        ),
+                      );
+                      return;
+                    }
+
+                    final empleadoId = empleadoSeleccionado!["id"];
+                    print("👤 empleado seleccionado → $empleadoId");
+
+                    DateTime? selected = await showDatePicker(
+                      context: context,
+                      initialDate: DateTime.now(),
+                      firstDate: DateTime(2024),
+                      lastDate: DateTime(2030),
+                    );
+
+                    if (selected == null) return;
+
+                    DateTime monday = selected.subtract(
+                      Duration(days: selected.weekday - 1),
+                    );
+
+                    final weekStr =
+                        "${monday.year}-${monday.month.toString().padLeft(2, '0')}-${monday.day.toString().padLeft(2, '0')}";
+
+                    final url =
+                        "${ApiService.baseUrl}/documentos/descargar-semanal/$empleadoId?week=$weekStr";
+
+                    print("📅 Semana solicitada: $weekStr");
+                    print("🔗 URL: $url");
+
+                    if (kIsWeb) {
+                      try {
+                        final headers = await ApiService.authHeaders();
+                        final r = await http.get(
+                          Uri.parse(url),
+                          headers: headers,
+                        );
+
+                        if (r.statusCode != 200) {
+                          print("❌ ERROR → ${r.body}");
+                          throw Exception();
+                        }
+
+                        WebDownloader.downloadBytes(
+                          "informe_$weekStr.csv",
+                          r.bodyBytes,
+                        );
+                      } catch (e) {
+                        print("💥 ERROR WEB informe: $e");
+                      }
+                      return;
+                    }
+
+                    try {
+                      final r = await http.get(Uri.parse(url));
+
+                      if (r.statusCode != 200) {
+                        print("❌ ERROR: ${r.body}");
+                        throw Exception("Error informe");
+                      }
+
+                      Directory? baseDir;
+
+                      if (Platform.isAndroid) {
+                        baseDir = Directory("/storage/emulated/0/Download");
+                      } else {
+                        baseDir = await getDownloadsDirectory();
+                      }
+
+                      final path = "${baseDir!.path}/informe_$weekStr.csv";
+                      await File(path).writeAsBytes(r.bodyBytes);
+
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text("📄 Informe guardado en Descargas"),
+                          backgroundColor: Colors.greenAccent.shade400,
+                        ),
+                      );
+                    } catch (e) {
+                      print("💥 ERROR móvil/PC: $e");
+                    }
+                  },
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              loadingDocs
+                  ? const Center(child: CircularProgressIndicator())
+                  : documentos.isEmpty
+                  ? Text(
+                      "No hay documentos subidos.",
+                      style: TextStyle(color: txt.withOpacity(.6)),
+                    )
+                  : Column(
+                      children: documentos.map((doc) {
+                        final nombre = doc["nombre"];
+                        final fecha = doc["fecha_subida"];
+
+                        return Container(
+                          margin: const EdgeInsets.symmetric(vertical: 8),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            color: dark ? Colors.white10 : Colors.white,
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.description,
+                                color: Colors.blueAccent,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  nombre,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.inter(
+                                    fontWeight: FontWeight.w600,
+                                    color: txt,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                fecha.toString().split("T").first,
+                                style: TextStyle(color: txt.withOpacity(.6)),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -125,40 +477,25 @@ class _AdminSettingsPageState extends State<AdminSettingsPage>
         "title": "Starter",
         "subtitle": "Ideal para equipos pequeños",
         "price": "4,95 €/mes",
-        "features": [
-          "Hasta 5 empleados",
-          "Soporte básico",
-          "Panel de control esencial",
-        ],
         "color": const Color(0xFF4ADE80),
         "gradient": const [Color(0xFFa2facf), Color(0xFF64acff)],
-        "icon": Icons.auto_awesome
+        "icon": Icons.auto_awesome,
       },
       {
         "title": "Pro",
-        "subtitle": "Perfecto para pymes en expansión",
+        "subtitle": "Para pymes",
         "price": "14,99 €/mes",
-        "features": [
-          "Hasta 25 empleados",
-          "Soporte prioritario",
-          "Integración con n8n y dashboards",
-        ],
         "color": const Color(0xFF2563EB),
         "gradient": const [Color(0xFF667EEA), Color(0xFF764BA2)],
-        "icon": Icons.workspace_premium_rounded
+        "icon": Icons.workspace_premium_rounded,
       },
       {
         "title": "Enterprise",
-        "subtitle": "Para grandes empresas",
+        "subtitle": "Empresas grandes",
         "price": "39,99 €/mes",
-        "features": [
-          "Empleados ilimitados",
-          "Soporte dedicado 24/7",
-          "Automatizaciones y API personalizadas",
-        ],
         "color": const Color(0xFFF59E0B),
         "gradient": const [Color(0xFFFFD86F), Color(0xFFFBB03B)],
-        "icon": Icons.business_center_rounded
+        "icon": Icons.business_center_rounded,
       },
     ];
 
@@ -170,17 +507,13 @@ class _AdminSettingsPageState extends State<AdminSettingsPage>
         centerTitle: true,
         title: Text(
           "Ajustes de la empresa",
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w700,
-            fontSize: 20,
-          ),
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 20),
         ),
       ),
       body: loading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
               padding: const EdgeInsets.all(24),
-              physics: const BouncingScrollPhysics(),
               child: Column(
                 children: [
                   _buildEmpresaSection(dark),
@@ -189,8 +522,7 @@ class _AdminSettingsPageState extends State<AdminSettingsPage>
                   const SizedBox(height: 40),
                   ElevatedButton.icon(
                     onPressed: loading ? null : _saveChanges,
-                    icon:
-                        const Icon(Icons.save_rounded, color: Colors.white),
+                    icon: const Icon(Icons.save_rounded, color: Colors.white),
                     label: Text(
                       "Guardar cambios",
                       style: GoogleFonts.poppins(
@@ -202,15 +534,13 @@ class _AdminSettingsPageState extends State<AdminSettingsPage>
                     style: ElevatedButton.styleFrom(
                       backgroundColor: colorForPlan(selectedPlan),
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 40, vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
+                        horizontal: 40,
+                        vertical: 14,
                       ),
-                      shadowColor:
-                          colorForPlan(selectedPlan).withOpacity(0.4),
-                      elevation: 8,
                     ),
                   ),
+                  const SizedBox(height: 40),
+                  _buildDocumentosSection(dark),
                 ],
               ),
             ),
@@ -229,17 +559,6 @@ class _AdminSettingsPageState extends State<AdminSettingsPage>
                 ? Colors.white.withOpacity(0.05)
                 : Colors.white.withOpacity(0.85),
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: dark ? Colors.white10 : Colors.grey.shade200,
-              width: 1.2,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
-              ),
-            ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -254,13 +573,13 @@ class _AdminSettingsPageState extends State<AdminSettingsPage>
                           colorForPlan(selectedPlan).withOpacity(0.8),
                           colorForPlan(selectedPlan).withOpacity(0.4),
                         ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
                       ),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.apartment_rounded,
-                        color: Colors.white, size: 24),
+                    child: const Icon(
+                      Icons.apartment_rounded,
+                      color: Colors.white,
+                    ),
                   ),
                   const SizedBox(width: 14),
                   Text(
@@ -275,13 +594,21 @@ class _AdminSettingsPageState extends State<AdminSettingsPage>
               ),
               const SizedBox(height: 20),
               _inputField(
-                  empresaCtrl, "Nombre de la empresa", dark, Icons.business),
+                empresaCtrl,
+                "Nombre de la empresa",
+                dark,
+                Icons.business,
+              ),
               const SizedBox(height: 14),
               _inputField(emailCtrl, "Correo de contacto", dark, Icons.email),
               const SizedBox(height: 14),
-              _inputField(empleadosCtrl, "Número de empleados", dark,
-                  Icons.people_alt_rounded,
-                  type: TextInputType.number),
+              _inputField(
+                empleadosCtrl,
+                "Número de empleados",
+                dark,
+                Icons.people_alt_rounded,
+                type: TextInputType.number,
+              ),
             ],
           ),
         ),
@@ -289,7 +616,7 @@ class _AdminSettingsPageState extends State<AdminSettingsPage>
     );
   }
 
-  Widget _buildPlanSection(List<Map<String, dynamic>> plans, bool dark) {
+  Widget _buildPlanSection(List plans, bool dark) {
     return Column(
       children: [
         Row(
@@ -305,15 +632,17 @@ class _AdminSettingsPageState extends State<AdminSettingsPage>
                 ),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.credit_card_rounded,
-                  color: Colors.white, size: 24),
+              child: const Icon(Icons.credit_card_rounded, color: Colors.white),
             ),
             const SizedBox(width: 14),
-            Text("Plan de suscripción",
-                style: GoogleFonts.poppins(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                    color: dark ? Colors.white : Colors.black87)),
+            Text(
+              "Plan de suscripción",
+              style: GoogleFonts.poppins(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: dark ? Colors.white : Colors.black87,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 24),
@@ -324,12 +653,10 @@ class _AdminSettingsPageState extends State<AdminSettingsPage>
           children: List.generate(plans.length, (i) {
             final p = plans[i];
             final selected = selectedPlan == i;
-            final gradient = p["gradient"] as List<Color>;
-            final color = p["color"] as Color;
 
             return AnimatedScale(
               duration: const Duration(milliseconds: 300),
-              scale: selected ? 1.05 : 1.0,
+              scale: selected ? 1.05 : 1,
               child: GestureDetector(
                 onTap: () => setState(() => selectedPlan = i),
                 child: AnimatedContainer(
@@ -339,69 +666,54 @@ class _AdminSettingsPageState extends State<AdminSettingsPage>
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(22),
                     gradient: LinearGradient(
-                      colors: gradient,
+                      colors: (p["gradient"] as List<Color>),
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
                     border: Border.all(
                       color: selected
-                          ? Colors.white.withOpacity(0.9)
+                          ? Colors.white.withOpacity(.9)
                           : Colors.transparent,
                       width: 2,
                     ),
                     boxShadow: [
                       if (selected)
                         BoxShadow(
-                          color: color.withOpacity(0.4),
+                          color: (p["color"] as Color).withOpacity(.4),
                           blurRadius: 25,
                           offset: const Offset(0, 8),
                         ),
                     ],
                   ),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Icon(p["icon"], color: Colors.white, size: 36),
                       const SizedBox(height: 10),
-                      Text(p["title"],
-                          style: GoogleFonts.poppins(
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white)),
+                      Text(
+                        p["title"],
+                        style: GoogleFonts.poppins(
+                          fontSize: 22,
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                       const SizedBox(height: 4),
-                      Text(p["subtitle"],
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.inter(
-                              color: Colors.white70, fontSize: 13)),
+                      Text(
+                        p["subtitle"],
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.inter(
+                          color: Colors.white70,
+                          fontSize: 13,
+                        ),
+                      ),
                       const SizedBox(height: 12),
-                      Text(p["price"],
-                          style: GoogleFonts.poppins(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white)),
-                      const SizedBox(height: 14),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: (p["features"] as List<String>)
-                            .map((f) => Padding(
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 3),
-                                  child: Row(
-                                    children: [
-                                      const Icon(Icons.check_circle,
-                                          color: Colors.white, size: 16),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(f,
-                                            style: GoogleFonts.inter(
-                                              color: Colors.white,
-                                              fontSize: 13,
-                                            )),
-                                      ),
-                                    ],
-                                  ),
-                                ))
-                            .toList(),
+                      Text(
+                        p["price"],
+                        style: GoogleFonts.poppins(
+                          fontSize: 24,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ],
                   ),
@@ -423,9 +735,13 @@ class _AdminSettingsPageState extends State<AdminSettingsPage>
     };
   }
 
-  Widget _inputField(TextEditingController ctrl, String label, bool dark,
-      IconData icon,
-      {TextInputType type = TextInputType.text}) {
+  Widget _inputField(
+    TextEditingController ctrl,
+    String label,
+    bool dark,
+    IconData icon, {
+    TextInputType type = TextInputType.text,
+  }) {
     return TextField(
       controller: ctrl,
       keyboardType: type,
@@ -438,19 +754,18 @@ class _AdminSettingsPageState extends State<AdminSettingsPage>
         labelText: label,
         labelStyle: GoogleFonts.poppins(
           color: dark ? Colors.white70 : Colors.black54,
-          fontWeight: FontWeight.w500,
         ),
         filled: true,
         fillColor: dark ? Colors.white10 : Colors.white,
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide:
-              BorderSide(color: dark ? Colors.white10 : Colors.grey.shade300),
+          borderSide: BorderSide(
+            color: dark ? Colors.white10 : Colors.grey.shade300,
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide:
-              BorderSide(color: colorForPlan(selectedPlan), width: 2),
+          borderSide: BorderSide(color: colorForPlan(selectedPlan), width: 2),
         ),
       ),
     );

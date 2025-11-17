@@ -43,6 +43,7 @@ class DashboardAdminPage extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // HEADER
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -63,7 +64,9 @@ class DashboardAdminPage extends StatelessWidget {
                             "Gestión del sistema",
                             style: TextStyle(
                               fontSize: 14,
-                              color: theme.colorScheme.onSurface.withOpacity(.6),
+                              color: theme.colorScheme.onSurface.withOpacity(
+                                .6,
+                              ),
                             ),
                           ),
                         ],
@@ -101,16 +104,17 @@ class DashboardAdminPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 30),
 
+                  // GRID SIN REPORTES
                   Expanded(
                     child: GridView(
                       padding: EdgeInsets.zero,
                       gridDelegate:
                           const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 4,
-                        childAspectRatio: 1.2,
-                        mainAxisSpacing: 22,
-                        crossAxisSpacing: 22,
-                      ),
+                            crossAxisCount: 4,
+                            childAspectRatio: 1.2,
+                            mainAxisSpacing: 22,
+                            crossAxisSpacing: 22,
+                          ),
                       children: [
                         _dashCard(
                           context,
@@ -135,17 +139,10 @@ class DashboardAdminPage extends StatelessWidget {
                         ),
                         _dashCard(
                           context,
-                          icon: Icons.analytics_rounded,
-                          title: "Reportes",
-                          route: "", 
-                          color: Colors.orangeAccent,
-                        ),
-                        _dashCard(
-                          context,
                           icon: Icons.settings_rounded,
                           title: "Ajustes",
                           route: AppRoutes.adminSettings,
-                          color: Colors.greenAccent,
+                          color: Color(0xFFE75026), // 🔵 NUEVO COLOR
                         ),
                       ],
                     ),

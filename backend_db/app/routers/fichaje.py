@@ -4,8 +4,13 @@ from datetime import datetime, timezone
 from fastapi.responses import JSONResponse
 from app.database import get_db
 from app.models.fichaje import Fichaje
+from fastapi.responses import Response
 from app.schemas.fichaje import FichajeResponse
 from app.security import get_current_user
+from io import BytesIO
+import pandas as pd
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
 
 
 router = APIRouter(tags=["Fichajes"])
@@ -139,3 +144,93 @@ def ultimo_fichaje(usuario_id: str, db: Session = Depends(get_db), user=Depends(
         "estado": fichaje.tipo,
         "hora": fichaje.fecha_hora.isoformat()
     }
+
+@router.get("/reporte/{usuario_id}/{year}/{month}/excel")
+def reporte_excel(usuario_id: str, year: int, month: int,
+                  db: Session = Depends(get_db),
+                  user=Depends(get_current_user)):
+
+    registros = (
+        db.query(Fichaje)
+        .filter(Fichaje.usuario_id == usuario_id)
+        .filter(Fichaje.fecha_hora.between(
+            f"{year}-{month:02d}-01",
+            f"{year}-{month:02d}-31"
+        ))
+        .order_by(Fichaje.fecha_hora.asc())
+        .all()
+    )
+
+    if not registros:
+        return Response(status_code=404, content="No hay datos")
+
+    filas = []
+    for r in registros:
+        filas.append({
+            "Fecha": r.fecha_hora.date().isoformat(),
+            "Hora": r.fecha_hora.time().isoformat(),
+            "Tipo": r.tipo,
+        })
+
+    df = pd.DataFrame(filas)
+
+    output = BytesIO()
+    df.to_excel(output, index=False)
+    output.seek(0)
+
+    return Response(
+        content=output.read(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition":
+                f"attachment; filename=reporte_{usuario_id}_{month}-{year}.xlsx"
+        }
+    )
+
+@router.get("/reporte/{usuario_id}/{year}/{month}/pdf")
+def reporte_pdf(usuario_id: str, year: int, month: int,
+                db: Session = Depends(get_db),
+                user=Depends(get_current_user)):
+
+    registros = (
+        db.query(Fichaje)
+        .filter(Fichaje.usuario_id == usuario_id)
+        .filter(Fichaje.fecha_hora.between(
+            f"{year}-{month:02d}-01",
+            f"{year}-{month:02d}-31"
+        ))
+        .order_by(Fichaje.fecha_hora.asc())
+        .all()
+    )
+
+    if not registros:
+        return Response(status_code=404, content="No hay datos")
+
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer, pagesize=letter)
+
+    c.drawString(50, 760, f"Reporte mensual de fichajes - {month}/{year}")
+    c.drawString(50, 740, f"Empleado: {usuario_id}")
+
+    y = 700
+    for r in registros:
+        c.drawString(
+            50, y,
+            f"{r.fecha_hora.date()} {r.fecha_hora.time()} - {r.tipo}"
+        )
+        y -= 16
+        if y < 50:
+            c.showPage()
+            y = 750
+
+    c.save()
+    buffer.seek(0)
+
+    return Response(
+        content=buffer.read(),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition":
+                f"attachment; filename=reporte_{usuario_id}_{month}-{year}.pdf"
+        }
+    )

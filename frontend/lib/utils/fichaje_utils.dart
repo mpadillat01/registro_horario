@@ -38,6 +38,7 @@ class FichajeUtils {
     DateTime dia,
   ) {
     final diaLocal = dia.toLocal();
+
     final eventos =
         historial
             .where((e) => isSameDay((e["dt"] as DateTime).toLocal(), diaLocal))
@@ -59,27 +60,27 @@ class FichajeUtils {
       if (tipo == "entrada" && !enPausa) {
         entrada = dt;
       } else if (tipo == "inicio_pausa" && entrada != null) {
-        final diff = dt.difference(entrada);
-        if (diff.inMinutes > 0 && diff.inHours <= 16) total += diff;
+        total += dt.difference(entrada); // 🔥 incluye segundos reales
         entrada = null;
         enPausa = true;
       } else if (tipo == "fin_pausa") {
         entrada = dt;
         enPausa = false;
       } else if (tipo == "salida" && entrada != null) {
-        final diff = dt.difference(entrada);
-        if (diff.inMinutes > 0 && diff.inHours <= 16) total += diff;
+        total += dt.difference(entrada); // 🔥 incluye segundos reales
         entrada = null;
       }
     }
 
+    // 🔥 Si sigues trabajando ahora mismo…
     if (entrada != null && !enPausa) {
-      final ahora = DateTime.now().toLocal();
-      final diff = ahora.difference(entrada);
-      if (diff.inMinutes > 0 && diff.inHours <= 12) total += diff;
+      total += DateTime.now().toLocal().difference(entrada);
     }
 
-    if (total.inHours > 24) total = const Duration(hours: 24);
+    // 🔥 Seguridad
+    if (total.inHours > 24) {
+      total = const Duration(hours: 24);
+    }
 
     return total;
   }

@@ -12,10 +12,29 @@ class EmpresaService {
     print("📦 Usuario autenticado:");
     print(user);
 
-    final empresaId = user["empresa_id"] ?? user["empresa"]?["id"];
-    print("📤 Enviando invitación → empresa_id: $empresaId, email: $email");
+    // Intentos ordenados
+    String? empresaId;
+
+    // 1️⃣ Si viene en la raíz del token
+    if (user["empresa_id"] != null &&
+        user["empresa_id"].toString().isNotEmpty) {
+      empresaId = user["empresa_id"].toString();
+    }
+    // 2️⃣ Si viene como nested object empresa { id: ... }
+    else if (user["empresa"] != null && user["empresa"]["id"] != null) {
+      empresaId = user["empresa"]["id"].toString();
+    }
+    // 3️⃣ Si viene como id en empresaData
+    else if (user["empresaId"] != null) {
+      empresaId = user["empresaId"].toString();
+    }
+
+    print("🏭 empresaId detectado → $empresaId");
 
     if (empresaId == null) {
+      print("❌ ERROR → No se encontró empresa en el usuario");
+      print("📝 Usuario completo:");
+      print(user);
       throw Exception("No se encontró la empresa del usuario actual");
     }
 
@@ -30,5 +49,10 @@ class EmpresaService {
   static Future<List<dynamic>> listarInvitaciones() async {
     final res = await ApiService.get("/invitaciones/");
     return List<Map<String, dynamic>>.from(res);
+  }
+
+  static Future<Map<String, dynamic>> checkLimit() async {
+    final res = await ApiService.get("/empresa/verificar-limite");
+    return Map<String, dynamic>.from(res);
   }
 }

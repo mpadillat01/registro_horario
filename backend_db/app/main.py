@@ -10,6 +10,7 @@ from app.routers import (
     usuario as usuario_router,
     notification,
     invitacion,  
+    documentos
 )
 
 print("✅ Creando tablas si no existen...")
@@ -31,6 +32,7 @@ app.include_router(fichaje.router, prefix="/fichajes")
 app.include_router(usuario_router.router)
 app.include_router(notification.router)
 app.include_router(invitacion.router)
+app.include_router(documentos.router)
 @app.get("/")
 def root():
     return {"status": "API funcionando ✅"}

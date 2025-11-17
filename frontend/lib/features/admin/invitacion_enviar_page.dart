@@ -27,10 +27,21 @@ class _InvitacionEnviarPageState extends State<InvitacionEnviarPage> {
       _toast("✅ Invitación enviada correctamente");
       Navigator.pop(context, true);
     } catch (e) {
-      final errorMsg = e.toString().contains("plan")
-          ? e.toString()
-          : "❌ Error al enviar la invitación";
-      _toast(errorMsg, error: true);
+      final mensaje = e.toString();
+
+      // Si el backend envió un mensaje de límite, mostrarlo limpio
+      if (mensaje.contains("límite") ||
+          mensaje.contains("limite") ||
+          mensaje.contains("plan")) {
+        final limpio = mensaje
+            .replaceAll("Exception:", "")
+            .replaceAll("Exception", "")
+            .trim();
+
+        _toast(limpio, error: true);
+      } else {
+        _toast("❌ Error al enviar la invitación", error: true);
+      }
     } finally {
       setState(() => loading = false);
     }
@@ -55,8 +66,10 @@ class _InvitacionEnviarPageState extends State<InvitacionEnviarPage> {
     return Scaffold(
       backgroundColor: const Color(0xFF0E1116),
       appBar: AppBar(
-        title: const Text("Invitar empleado",
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+        title: const Text(
+          "Invitar empleado",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+        ),
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
@@ -88,8 +101,11 @@ class _InvitacionEnviarPageState extends State<InvitacionEnviarPage> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.mail_outline_rounded,
-                        size: 58, color: color.withOpacity(.9)),
+                    Icon(
+                      Icons.mail_outline_rounded,
+                      size: 58,
+                      color: color.withOpacity(.9),
+                    ),
                     const SizedBox(height: 20),
                     const Text(
                       "Enviar invitación",
@@ -115,17 +131,23 @@ class _InvitacionEnviarPageState extends State<InvitacionEnviarPage> {
                         hintStyle: const TextStyle(color: Colors.white38),
                         labelText: "Email del empleado",
                         labelStyle: const TextStyle(color: Colors.white70),
-                        prefixIcon: const Icon(Icons.email_rounded,
-                            color: Colors.white70),
+                        prefixIcon: const Icon(
+                          Icons.email_rounded,
+                          color: Colors.white70,
+                        ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(14),
-                          borderSide:
-                              const BorderSide(color: Colors.white24, width: 1.3),
+                          borderSide: const BorderSide(
+                            color: Colors.white24,
+                            width: 1.3,
+                          ),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(14),
-                          borderSide:
-                              BorderSide(color: color.withOpacity(.8), width: 1.6),
+                          borderSide: BorderSide(
+                            color: color.withOpacity(.8),
+                            width: 1.6,
+                          ),
                         ),
                         filled: true,
                         fillColor: Colors.white.withOpacity(.04),
@@ -139,7 +161,9 @@ class _InvitacionEnviarPageState extends State<InvitacionEnviarPage> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: color,
                           padding: const EdgeInsets.symmetric(
-                              vertical: 14, horizontal: 20),
+                            vertical: 14,
+                            horizontal: 20,
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
                           ),

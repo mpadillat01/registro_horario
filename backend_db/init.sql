@@ -55,5 +55,15 @@ CREATE TABLE IF NOT EXISTS notificaciones (
     fecha_lectura TIMESTAMP NULL
 );
 
+CREATE TABLE IF NOT EXISTS documentos (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    usuario_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    nombre VARCHAR(255) NOT NULL,          
+    ruta TEXT NOT NULL,                    
+    tipo VARCHAR(50) DEFAULT 'general',    
+    fecha_subida TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+
 ALTER TABLE notificaciones
 ALTER COLUMN id SET DEFAULT uuid_generate_v4();
