@@ -28,6 +28,7 @@ class _PerfilPageState extends State<PerfilPage> {
   bool cargando = true, editando = false;
   Timer? timer;
   bool _btnPressed = false;
+  bool editandoPerfil = false;
 
   final nombreCtrl = TextEditingController();
   final apellidosCtrl = TextEditingController();
@@ -199,7 +200,6 @@ class _PerfilPageState extends State<PerfilPage> {
 
               _buildHistorialCard(isDark),
               const SizedBox(height: 30),
-
 
               _logoutButton(),
             ],
@@ -415,7 +415,6 @@ class _PerfilPageState extends State<PerfilPage> {
     );
   }
 
-  
   Widget _buildHistorialCard(bool dark) {
     final txt = dark ? Colors.white70 : Colors.black87;
 
@@ -527,13 +526,218 @@ class _PerfilPageState extends State<PerfilPage> {
     );
   }
 
-  Widget _avatar(String nombre, Color color, bool dark) {
+  Widget _avatar(String nombre, Color colorPrincipal, bool dark) {
     final inicial = nombre.isNotEmpty ? nombre[0].toUpperCase() : "U";
-    return Center(
-      child: CircleAvatar(
-        radius: 52,
-        backgroundColor: color.withOpacity(.15),
-        child: Text(inicial, style: TextStyle(fontSize: 44, color: color)),
+
+    return Column(
+      children: [
+        Center(
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                width: 110,
+                height: 110,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: [
+                      colorPrincipal.withOpacity(.35),
+                      colorPrincipal.withOpacity(.18),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: colorPrincipal.withOpacity(0.4),
+                      blurRadius: 22,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: CircleAvatar(
+                  backgroundColor: Colors.transparent,
+                  child: Text(
+                    inicial,
+                    style: TextStyle(
+                      fontSize: 48,
+                      fontWeight: FontWeight.w700,
+                      color: colorPrincipal,
+                    ),
+                  ),
+                ),
+              ),
+
+              Positioned(
+                bottom: 0,
+                right: 0,
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() => editandoPerfil = !editandoPerfil);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: dark ? Colors.black : Colors.white,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(.25),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      Icons.edit_rounded,
+                      color: colorPrincipal,
+                      size: 22,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          child: editandoPerfil
+              ? _editorInline(dark, colorPrincipal)
+              : const SizedBox.shrink(),
+        ),
+      ],
+    );
+  }
+
+  Widget _editorInline(bool dark, Color colorPrincipal) {
+    return Container(
+      key: const ValueKey("editorInline"),
+      margin: const EdgeInsets.only(top: 20),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: dark ? Colors.black.withOpacity(.25) : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: colorPrincipal.withOpacity(.35), width: 1.2),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(.15), blurRadius: 10),
+        ],
+      ),
+      child: Column(
+        children: [
+          _campoEditar(
+            "Nombre",
+            Icons.person_rounded,
+            nombreCtrl,
+            dark,
+            colorPrincipal,
+          ),
+          const SizedBox(height: 12),
+
+          _campoEditar(
+            "Apellidos",
+            Icons.person_outline_rounded,
+            apellidosCtrl,
+            dark,
+            colorPrincipal,
+          ),
+          const SizedBox(height: 12),
+
+          _campoEditar(
+            "Email",
+            Icons.email_rounded,
+            emailCtrl,
+            dark,
+            colorPrincipal,
+          ),
+          const SizedBox(height: 12),
+
+          _campoEditar(
+            "DNI / NIE",
+            Icons.badge_rounded,
+            dniCtrl,
+            dark,
+            colorPrincipal,
+          ),
+          const SizedBox(height: 20),
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                child: Text(
+                  "Cancelar",
+                  style: TextStyle(
+                    color: dark ? Colors.white70 : Colors.black54,
+                  ),
+                ),
+                onPressed: () => setState(() => editandoPerfil = false),
+              ),
+              const SizedBox(width: 10),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: colorPrincipal,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 22,
+                    vertical: 12,
+                  ),
+                ),
+                child: const Text(
+                  "Guardar",
+                  style: TextStyle(
+                    color: Colors.black,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                onPressed: () {
+                  setState(() {
+                    user!["nombre"] = nombreCtrl.text;
+                    user!["apellidos"] = apellidosCtrl.text;
+                    user!["email"] = emailCtrl.text;
+                    user!["dni"] = dniCtrl.text;
+                    editandoPerfil = false;
+                  });
+                  _toast("Perfil actualizado");
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _campoEditar(
+    String label,
+    IconData icon,
+    TextEditingController ctrl,
+    bool dark,
+    Color colorPrincipal,
+  ) {
+    return TextField(
+      controller: ctrl,
+      style: TextStyle(color: dark ? Colors.white : Colors.black87),
+      decoration: InputDecoration(
+        prefixIcon: Icon(icon, color: colorPrincipal, size: 22),
+        labelText: label,
+        labelStyle: TextStyle(
+          color: dark ? Colors.white70 : Colors.black54,
+          fontWeight: FontWeight.w500,
+        ),
+        filled: true,
+        fillColor: dark ? Colors.white10 : Colors.grey.shade200.withOpacity(.7),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: colorPrincipal.withOpacity(.4)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: colorPrincipal, width: 1.6),
+        ),
       ),
     );
   }

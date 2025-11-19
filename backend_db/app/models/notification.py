@@ -16,3 +16,4 @@ class Notificacion(Base):
     leida = Column(Boolean, default=False)
     fecha_envio = Column(DateTime(timezone=True), server_default=func.now())
     origen = Column(String(50), default="sistema")
+    archivo = Column(String, nullable=True) 

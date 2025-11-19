@@ -28,10 +28,10 @@ def get_my_notifications(
             "leida": n.leida,
             "fecha_envio": n.fecha_envio.isoformat() if n.fecha_envio else None,
             "origen": n.origen,
+            "archivo": n.archivo,   
         }
         for n in notificaciones
     ]
-
 
 @router.get("/enviadas")
 def get_sent_notifications(
@@ -62,6 +62,7 @@ def get_sent_notifications(
             "tipo": n.tipo,
             "fecha_envio": n.fecha_envio.isoformat() if n.fecha_envio else None,
             "destinatario": str(n.usuario_id),
+            "archivo": n.archivo, 
         }
         for n in notificaciones
     ]
@@ -82,6 +83,7 @@ def mark_all_read(
     db.commit()
     return {"message": f"{updated} notificaciones marcadas como leídas"}
 
+
 @router.post("/enviar")
 def enviar_mensaje(
     data: dict = Body(...),
@@ -100,6 +102,8 @@ def enviar_mensaje(
     origen = data.get("origen", "admin")
     todos = data.get("todos", False)
     usuario_id = data.get("usuario_id")
+    archivo = data.get("archivo")
+    contenido_archivo = data.get("contenido")
 
     if not titulo or not mensaje:
         raise HTTPException(status_code=400, detail="Título y mensaje son obligatorios")
@@ -108,13 +112,33 @@ def enviar_mensaje(
     if not empresa_id:
         raise HTTPException(status_code=400, detail="El admin no tiene empresa asociada")
 
+
+    def guardar_archivo(usuario_id: str, nombre: str, contenido: bytes):
+        from app.routers.documentos import BASE_DIR
+        import os
+
+        ruta_dir = f"{BASE_DIR}/{usuario_id}/"
+        os.makedirs(ruta_dir, exist_ok=True)
+
+        ruta_archivo = os.path.join(ruta_dir, nombre)
+
+        with open(ruta_archivo, "wb") as f:
+            f.write(contenido)
+
+        return ruta_archivo
+
     if todos:
         empleados = (
             db.query(Usuario)
             .filter(Usuario.empresa_id == empresa_id, Usuario.rol == "empleado")
             .all()
         )
+
         for emp in empleados:
+
+            if tipo == "documento" and archivo and contenido_archivo:
+                guardar_archivo(emp.id, archivo, contenido_archivo.encode())
+
             notif = Notificacion(
                 usuario_id=emp.id,
                 empresa_id=empresa_id,
@@ -122,15 +146,21 @@ def enviar_mensaje(
                 mensaje=mensaje,
                 tipo=tipo,
                 origen=origen,
+                archivo=archivo,
                 fecha_envio=datetime.utcnow(),
             )
             db.add(notif)
+
     else:
         if not usuario_id:
             raise HTTPException(
                 status_code=400,
                 detail="Debe indicar usuario_id si 'todos' es False"
             )
+
+        if tipo == "documento" and archivo and contenido_archivo:
+            guardar_archivo(usuario_id, archivo, contenido_archivo.encode())
+
         notif = Notificacion(
             usuario_id=usuario_id,
             empresa_id=empresa_id,
@@ -138,6 +168,7 @@ def enviar_mensaje(
             mensaje=mensaje,
             tipo=tipo,
             origen=origen,
+            archivo=archivo,
             fecha_envio=datetime.utcnow(),
         )
         db.add(notif)
@@ -160,7 +191,7 @@ def delete_notification(
         )
         .first()
     )
-    if notificacion is None:
+    if not notificacion:
         raise HTTPException(status_code=404, detail="Notificación no encontrada")
 
     db.delete(notificacion)

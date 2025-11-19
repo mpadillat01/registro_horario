@@ -19,9 +19,7 @@ class DocumentoService {
     final req = http.MultipartRequest("POST", uri);
     req.headers["Authorization"] = headers["Authorization"]!;
 
-    req.files.add(
-      await http.MultipartFile.fromPath("archivo", archivo.path),
-    );
+    req.files.add(await http.MultipartFile.fromPath("archivo", archivo.path));
 
     final res = await req.send();
     return res.statusCode == 200;
@@ -58,10 +56,11 @@ class DocumentoService {
     if (res == null) return [];
 
     try {
-      return (res as List).map((e) {
+      return (res as List).map<Map<String, dynamic>>((e) {
         return {
           "id": e["id"],
-          "nombre": e["nombre"],            
+          "usuario_id": e["usuario_id"] ?? usuarioId,
+          "nombre": e["nombre"],
           "ruta": e["ruta"],
           "tipo": e["tipo"],
           "fecha_subida": e["fecha_subida"],

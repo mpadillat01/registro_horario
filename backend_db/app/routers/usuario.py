@@ -30,7 +30,10 @@ def listar_empleados(
     empleados = (
         db.query(Usuario, Empresa)
         .join(Empresa, Usuario.empresa_id == Empresa.id)
-        .filter(Usuario.empresa_id == current_user.empresa_id, Usuario.rol == "empleado")
+        .filter(
+            Usuario.empresa_id == current_user.empresa_id,
+            Usuario.rol == "empleado"
+        )
         .all()
     )
 
@@ -43,6 +46,12 @@ def listar_empleados(
             "activo": u.activo,
             "empresa_id": str(u.empresa_id),
             "empresa_nombre": emp.nombre,
+
+            "fecha_creacion": (
+                u.fecha_creacion.isoformat()
+                if u.fecha_creacion is not None
+                else None
+            )
         }
         for u, emp in empleados
     ]

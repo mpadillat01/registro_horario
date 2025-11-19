@@ -1,16 +1,13 @@
 import 'dart:convert';
+import 'package:http_parser/http_parser.dart';
 import 'dart:io';
 import 'dart:ui';
+import 'dart:html' as html;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
-import 'package:file_picker/file_picker.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:registro_horario/services/web_download.dart';
-import 'package:url_launcher/url_launcher.dart';
-
 import 'package:registro_horario/services/api_service.dart';
 import 'package:registro_horario/services/auth_service.dart';
 import 'package:registro_horario/services/documento_service.dart';
@@ -33,6 +30,7 @@ class _AdminSettingsPageState extends State<AdminSettingsPage>
 
   List documentos = [];
   bool loadingDocs = false;
+  String formato = "csv"; 
 
   Map<String, dynamic>? empresaData;
 
@@ -40,11 +38,148 @@ class _AdminSettingsPageState extends State<AdminSettingsPage>
   Map<String, dynamic>? empleadoSeleccionado;
   bool cargandoEmpleados = false;
 
+  List<Map<String, dynamic>> semanas = [];
+  List<Map<String, dynamic>> meses = [];
+  Map<String, dynamic>? semanaSeleccionada;
+  Map<String, dynamic>? mesSeleccionado;
+  String modoSeleccion = "";
+
   @override
   void initState() {
     super.initState();
     _loadEmpresa();
     cargarEmpleados();
+
+    semanas = [];
+    meses = [];
+  }
+
+  List<Map<String, dynamic>> generarSemanasDesde(DateTime inicio) {
+    List<Map<String, dynamic>> result = [];
+
+    inicio = inicio.subtract(Duration(days: inicio.weekday - 1));
+
+    DateTime hoy = DateTime.now();
+
+    while (inicio.isBefore(hoy)) {
+      final lunes = inicio;
+      final domingo = lunes.add(const Duration(days: 6));
+
+      result.add({
+        "label":
+            "Semana ${result.length + 1} · ${lunes.day}/${lunes.month} - ${domingo.day}/${domingo.month}",
+        "start": lunes,
+        "end": domingo,
+      });
+
+      inicio = inicio.add(const Duration(days: 7));
+    }
+
+    return result;
+  }
+
+  List<Map<String, dynamic>> generarMesesDesde(DateTime inicio) {
+    List<Map<String, dynamic>> result = [];
+
+    DateTime fecha = DateTime(inicio.year, inicio.month); 
+        DateTime hoy = DateTime.now();
+
+    while (fecha.isBefore(DateTime(hoy.year, hoy.month + 1))) {
+      final inicioMes = fecha;
+      final finMes = DateTime(
+        fecha.year,
+        fecha.month + 1,
+      ).subtract(const Duration(days: 1));
+
+      result.add({
+        "label": "${inicioMes.month}/${inicioMes.year}",
+        "start": inicioMes,
+        "end": finMes,
+      });
+
+      fecha = DateTime(fecha.year, fecha.month + 1);
+    }
+
+    return result;
+  }
+
+  Future<void> descargarInformeSemanalCSV() async {
+    await descargarInforme(); 
+  }
+
+  Future<void> descargarInformeMensualCSV() async {
+    await descargarInformeMensual(); 
+  }
+
+  Future<void> descargarInformeSemanalPDF() async {
+    final userId = empleadoSeleccionado!["id"];
+    final inicio = semanaSeleccionada!["start"];
+
+    final semanaStr =
+        "${inicio.year}-${inicio.month.toString().padLeft(2, '0')}-${inicio.day.toString().padLeft(2, '0')}";
+
+    final url =
+        "${ApiService.baseUrl}/documentos/descargar-semanal-pdf/$userId?week=$semanaStr";
+
+    final headers = await ApiService.authHeaders();
+    final res = await http.get(Uri.parse(url), headers: headers);
+
+    if (res.statusCode != 200) {
+      return _err("Error ${res.statusCode} al descargar PDF semanal");
+    }
+
+    final bytes = res.bodyBytes;
+    final filename = "informe_$semanaStr.pdf";
+
+    if (!kIsWeb && Platform.isAndroid) {
+      final file = File("/storage/emulated/0/Download/$filename");
+      await file.writeAsBytes(bytes);
+      return;
+    }
+
+    if (kIsWeb) {
+      final blob = html.Blob([bytes], 'application/pdf');
+      final url2 = html.Url.createObjectUrlFromBlob(blob);
+      final a = html.AnchorElement(href: url2)
+        ..setAttribute("download", filename)
+        ..click();
+      html.Url.revokeObjectUrl(url2);
+    }
+  }
+
+  Future<void> descargarInformeMensualPDF() async {
+    final userId = empleadoSeleccionado!["id"];
+    final inicio = mesSeleccionado!["start"];
+
+    final mesStr = "${inicio.year}-${inicio.month.toString().padLeft(2, '0')}";
+
+    final url =
+        "${ApiService.baseUrl}/documentos/descargar-mensual-pdf/$userId?month=$mesStr";
+
+    final headers = await ApiService.authHeaders();
+    final res = await http.get(Uri.parse(url), headers: headers);
+
+    if (res.statusCode != 200) {
+      return _err("Error ${res.statusCode} al descargar PDF mensual");
+    }
+
+    final bytes = res.bodyBytes;
+    final filename = "informe_mensual_$mesStr.pdf";
+
+    if (!kIsWeb && Platform.isAndroid) {
+      final file = File("/storage/emulated/0/Download/$filename");
+      await file.writeAsBytes(bytes);
+      return;
+    }
+
+    if (kIsWeb) {
+      final blob = html.Blob([bytes], 'application/pdf');
+      final url2 = html.Url.createObjectUrlFromBlob(blob);
+      final a = html.AnchorElement(href: url2)
+        ..setAttribute("download", filename)
+        ..click();
+      html.Url.revokeObjectUrl(url2);
+    }
   }
 
   Future<void> cargarEmpleados() async {
@@ -176,6 +311,99 @@ class _AdminSettingsPageState extends State<AdminSettingsPage>
     }
   }
 
+  Future<void> descargarInformeMensual() async {
+    final userId = empleadoSeleccionado!["id"];
+    final inicioMes = mesSeleccionado!["start"];
+    final mesStr =
+        "${inicioMes.year}-${inicioMes.month.toString().padLeft(2, '0')}";
+
+    final url =
+        "${ApiService.baseUrl}/documentos/descargar-mensual/$userId?month=$mesStr";
+    final headers = await ApiService.authHeaders();
+
+    try {
+      final res = await http.get(Uri.parse(url), headers: headers);
+
+      if (res.statusCode != 200) {
+        _err("Error ${res.statusCode}: no se pudo descargar");
+        return;
+      }
+
+      final bytes = res.bodyBytes;
+      final filename = "informe_mensual_$mesStr.csv";
+
+      if (!kIsWeb && Platform.isAndroid) {
+        final dir = "/storage/emulated/0/Download";
+        final file = File("$dir/$filename");
+        await file.writeAsBytes(bytes);
+        return;
+      }
+
+      if (kIsWeb) {
+        final blob = html.Blob([bytes], 'text/csv');
+        final url2 = html.Url.createObjectUrlFromBlob(blob);
+        final anchor = html.AnchorElement(href: url2)
+          ..setAttribute("download", filename)
+          ..click();
+        html.Url.revokeObjectUrl(url2);
+        return;
+      }
+    } catch (e) {
+      _err("Error descargando: $e");
+    }
+  }
+
+  Future<void> descargarInforme() async {
+    final userId = empleadoSeleccionado!["id"];
+    final inicioSemana = semanaSeleccionada!["start"];
+    final semanaStr =
+        "${inicioSemana.year}-${inicioSemana.month.toString().padLeft(2, '0')}-${inicioSemana.day.toString().padLeft(2, '0')}";
+
+    final url =
+        "${ApiService.baseUrl}/documentos/descargar-semanal/$userId?week=$semanaStr";
+    final headers = await ApiService.authHeaders();
+
+    try {
+      final res = await http.get(Uri.parse(url), headers: headers);
+
+      if (res.statusCode != 200) {
+        _err("Error ${res.statusCode}: no se pudo descargar");
+        return;
+      }
+
+      final bytes = res.bodyBytes;
+      final filename = "informe_$semanaStr.csv";
+
+      if (!kIsWeb && Platform.isAndroid) {
+        final dir = "/storage/emulated/0/Download";
+        final file = File("$dir/$filename");
+        await file.writeAsBytes(bytes);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("📄 Informe guardado en Descargas"),
+            backgroundColor: Colors.green,
+          ),
+        );
+        return;
+      }
+
+      if (kIsWeb) {
+        final blob = html.Blob([bytes], 'text/csv');
+        final url2 = html.Url.createObjectUrlFromBlob(blob);
+
+        final anchor = html.AnchorElement(href: url2)
+          ..setAttribute("download", filename)
+          ..click();
+
+        html.Url.revokeObjectUrl(url2);
+        return;
+      }
+    } catch (e) {
+      _err("Error descargando: $e");
+    }
+  }
+
   Widget _buildDocumentosSection(bool dark) {
     final txt = dark ? Colors.white70 : Colors.black87;
     final glass = dark ? Colors.white12 : Colors.white.withOpacity(.85);
@@ -214,57 +442,81 @@ class _AdminSettingsPageState extends State<AdminSettingsPage>
 
               const SizedBox(height: 20),
 
-              Center(
-                child: ElevatedButton.icon(
-                  onPressed: () async {
-                    final result = await FilePicker.platform.pickFiles(
-                      withData: true,
-                    );
-                    if (result == null) return;
-
-                    final file = result.files.single;
-                    bool ok = false;
-
-                    final user = await AuthService.getCurrentUser();
-
-                    if (kIsWeb) {
-                      ok = await DocumentoService.subirDocumentoWeb(
-                        user["id"],
-                        "empresa",
-                        file.bytes!,
-                        file.name,
-                      );
-                    } else {
-                      ok = await DocumentoService.subirDocumento(
-                        user["id"],
-                        "empresa",
-                        File(file.path!),
-                      );
-                    }
-
-                    if (ok) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("📤 Documento subido"),
-                          backgroundColor: Colors.greenAccent,
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  color: dark ? Colors.white10 : Colors.grey.shade200,
+                ),
+                padding: const EdgeInsets.all(6),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            modoSeleccion = "semana";
+                            semanaSeleccionada = null;
+                            mesSeleccionado = null;
+                          });
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            color: modoSeleccion == "semana"
+                                ? Colors.blueAccent
+                                : Colors.transparent,
+                          ),
+                          child: Center(
+                            child: Text(
+                              "Semanas",
+                              style: GoogleFonts.poppins(
+                                color: modoSeleccion == "semana"
+                                    ? Colors.white
+                                    : txt,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
                         ),
-                      );
-                      _loadDocumentos();
-                    }
-                  },
-                  icon: const Icon(Icons.upload_file_rounded),
-                  label: const Text("Subir documento"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blueAccent,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 22,
-                      vertical: 14,
+                      ),
                     ),
-                  ),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            modoSeleccion = "mes";
+                            semanaSeleccionada = null;
+                            mesSeleccionado = null;
+                          });
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            color: modoSeleccion == "mes"
+                                ? Colors.blueAccent
+                                : Colors.transparent,
+                          ),
+                          child: Center(
+                            child: Text(
+                              "Meses",
+                              style: GoogleFonts.poppins(
+                                color: modoSeleccion == "mes"
+                                    ? Colors.white
+                                    : txt,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
 
-              const SizedBox(height: 20),
+              const SizedBox(height: 25),
 
               Text(
                 "Selecciona empleado para informe:",
@@ -288,22 +540,62 @@ class _AdminSettingsPageState extends State<AdminSettingsPage>
                           ),
                           value: empleadoSeleccionado,
                           isExpanded: true,
-                          items: empleados
-                              .map<DropdownMenuItem<Map<String, dynamic>>>((
-                                emp,
-                              ) {
-                                return DropdownMenuItem(
-                                  value: emp,
-                                  child: Text(
-                                    emp["nombre"] ?? emp["email"],
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                );
-                              })
-                              .toList(),
+                          items: empleados.map((emp) {
+                            return DropdownMenuItem(
+                              value: emp,
+                              child: Text(
+                                emp["nombre"] ?? emp["email"],
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            );
+                          }).toList(),
                           onChanged: (value) {
                             setState(() {
                               empleadoSeleccionado = value;
+
+                              final rawFecha =
+                                  empleadoSeleccionado!["fecha_creacion"] ??
+                                  empleadoSeleccionado!["fecha_registro"] ??
+                                  empleadoSeleccionado!["created_at"] ??
+                                  empleadoSeleccionado!["fecha"] ??
+                                  empleadoSeleccionado!["fecha_creado"];
+
+                              if (rawFecha == null ||
+                                  rawFecha.toString().isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      "❌ El empleado no tiene fecha válida",
+                                    ),
+                                    backgroundColor: Colors.redAccent,
+                                  ),
+                                );
+                                return;
+                              }
+
+                              DateTime fecha;
+
+                              try {
+                                fecha = DateTime.parse(
+                                  rawFecha.toString().replaceAll(" ", "T"),
+                                );
+                              } catch (e) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      "❌ Fecha inválida: $rawFecha",
+                                    ),
+                                    backgroundColor: Colors.redAccent,
+                                  ),
+                                );
+                                return;
+                              }
+
+                              semanas = generarSemanasDesde(fecha);
+                              meses = generarMesesDesde(fecha);
+
+                              semanaSeleccionada = null;
+                              mesSeleccionado = null;
                             });
                           },
                         ),
@@ -311,11 +603,127 @@ class _AdminSettingsPageState extends State<AdminSettingsPage>
                     ),
 
               const SizedBox(height: 20),
+              modoSeleccion != ""
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          modoSeleccion == "semana"
+                              ? "Selecciona una semana:"
+                              : "Selecciona un mes:",
+                          style: TextStyle(
+                            color: txt,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
 
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            color: dark ? Colors.white10 : Colors.white,
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<Map<String, dynamic>>(
+                              hint: Text(
+                                modoSeleccion == "semana"
+                                    ? "Elegir semana"
+                                    : "Elegir mes",
+                                style: TextStyle(color: txt.withOpacity(.6)),
+                              ),
+                              value: modoSeleccion == "semana"
+                                  ? semanaSeleccionada
+                                  : mesSeleccionado,
+                              isExpanded: true,
+                              items:
+                                  (modoSeleccion == "semana" ? semanas : meses)
+                                      .map(
+                                        (x) => DropdownMenuItem(
+                                          value: x,
+                                          child: Text(x["label"]),
+                                        ),
+                                      )
+                                      .toList(),
+                              onChanged: (value) {
+                                setState(() {
+                                  if (modoSeleccion == "semana") {
+                                    semanaSeleccionada = value;
+                                  } else {
+                                    mesSeleccionado = value;
+                                  }
+                                });
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  : Container(),
+
+              const SizedBox(height: 20),
+              Text(
+                "Formato del informe:",
+                style: TextStyle(color: txt, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 10),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => formato = "csv"),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          color: formato == "csv"
+                              ? Colors.blueAccent
+                              : (dark ? Colors.white10 : Colors.white),
+                        ),
+                        child: Center(
+                          child: Text(
+                            "CSV",
+                            style: TextStyle(
+                              color: formato == "csv" ? Colors.white : txt,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => formato = "pdf"),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          color: formato == "pdf"
+                              ? Colors.blueAccent
+                              : (dark ? Colors.white10 : Colors.white),
+                        ),
+                        child: Center(
+                          child: Text(
+                            "PDF",
+                            style: TextStyle(
+                              color: formato == "pdf" ? Colors.white : txt,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 25),
               Center(
                 child: ElevatedButton.icon(
                   icon: const Icon(Icons.analytics_rounded),
-                  label: const Text("Descargar informe semanal"),
+                  label: const Text("Descargar informe"),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.orangeAccent,
                     padding: const EdgeInsets.symmetric(
@@ -325,97 +733,122 @@ class _AdminSettingsPageState extends State<AdminSettingsPage>
                   ),
                   onPressed: () async {
                     if (empleadoSeleccionado == null) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text("Selecciona un empleado primero 👇"),
-                          backgroundColor: Colors.redAccent,
-                        ),
-                      );
-                      return;
+                      return _err("Selecciona un empleado");
                     }
 
-                    final empleadoId = empleadoSeleccionado!["id"];
-                    print("👤 empleado seleccionado → $empleadoId");
-
-                    DateTime? selected = await showDatePicker(
-                      context: context,
-                      initialDate: DateTime.now(),
-                      firstDate: DateTime(2024),
-                      lastDate: DateTime(2030),
-                    );
-
-                    if (selected == null) return;
-
-                    DateTime monday = selected.subtract(
-                      Duration(days: selected.weekday - 1),
-                    );
-
-                    final weekStr =
-                        "${monday.year}-${monday.month.toString().padLeft(2, '0')}-${monday.day.toString().padLeft(2, '0')}";
-
-                    final url =
-                        "${ApiService.baseUrl}/documentos/descargar-semanal/$empleadoId?week=$weekStr";
-
-                    print("📅 Semana solicitada: $weekStr");
-                    print("🔗 URL: $url");
-
-                    if (kIsWeb) {
-                      try {
-                        final headers = await ApiService.authHeaders();
-                        final r = await http.get(
-                          Uri.parse(url),
-                          headers: headers,
-                        );
-
-                        if (r.statusCode != 200) {
-                          print("❌ ERROR → ${r.body}");
-                          throw Exception();
-                        }
-
-                        WebDownloader.downloadBytes(
-                          "informe_$weekStr.csv",
-                          r.bodyBytes,
-                        );
-                      } catch (e) {
-                        print("💥 ERROR WEB informe: $e");
-                      }
-                      return;
+                    if (modoSeleccion == "") {
+                      return _err("Selecciona semana o mes");
                     }
 
-                    try {
-                      final r = await http.get(Uri.parse(url));
-
-                      if (r.statusCode != 200) {
-                        print("❌ ERROR: ${r.body}");
-                        throw Exception("Error informe");
+                    if (modoSeleccion == "semana") {
+                      if (semanaSeleccionada == null) {
+                        return _err("Selecciona una semana");
                       }
 
-                      Directory? baseDir;
-
-                      if (Platform.isAndroid) {
-                        baseDir = Directory("/storage/emulated/0/Download");
+                      if (formato == "csv") {
+                        await descargarInformeSemanalCSV();
                       } else {
-                        baseDir = await getDownloadsDirectory();
+                        await descargarInformeSemanalPDF();
+                      }
+                      return;
+                    }
+
+                    
+                    if (modoSeleccion == "mes") {
+                      if (mesSeleccionado == null) {
+                        return _err("Selecciona un mes");
                       }
 
-                      final path = "${baseDir!.path}/informe_$weekStr.csv";
-                      await File(path).writeAsBytes(r.bodyBytes);
-
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text("📄 Informe guardado en Descargas"),
-                          backgroundColor: Colors.greenAccent.shade400,
-                        ),
-                      );
-                    } catch (e) {
-                      print("💥 ERROR móvil/PC: $e");
+                      if (formato == "csv") {
+                        await descargarInformeMensualCSV();
+                      } else {
+                        await descargarInformeMensualPDF();
+                      }
+                      return;
                     }
                   },
                 ),
               ),
 
               const SizedBox(height: 20),
+              Center(
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.upload_file_rounded),
+                  label: const Text("Subir documento / PDF"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.greenAccent.shade700,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 22,
+                      vertical: 14,
+                    ),
+                  ),
+                  onPressed: () async {
+                    final usuario = await AuthService.getCurrentUser();
+                    final userId = usuario["id"];
 
+                    if (userId == null) {
+                      return _err("No se pudo detectar el usuario");
+                    }
+
+                    if (kIsWeb) {
+                      final input = html.FileUploadInputElement();
+                      input.accept = "*/*";
+                      input.click();
+
+                      input.onChange.listen((e) async {
+                        final file = input.files!.first;
+                        final reader = html.FileReader();
+
+                        reader.readAsArrayBuffer(file);
+                        await reader.onLoad.first;
+
+                        final bytes = reader.result as List<int>;
+                        final headers = await ApiService.authHeaders();
+
+                        final request = http.MultipartRequest(
+                          "POST",
+                          Uri.parse("${ApiService.baseUrl}/documentos/subir"),
+                        );
+
+                        request.fields["usuario_id"] = userId.toString();
+                        request.fields["tipo"] = "empresa";
+
+                        request.files.add(
+                          http.MultipartFile.fromBytes(
+                            "archivo",
+                            bytes,
+                            filename: file.name,
+                            contentType: MediaType(
+                              "application",
+                              "octet-stream",
+                            ),
+                          ),
+                        );
+
+                        request.headers.addAll(headers);
+
+                        final streamed = await request.send();
+                        final res = await http.Response.fromStream(streamed);
+
+                        if (res.statusCode == 200) {
+                          _loadDocumentos();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                "📄 Documento subido correctamente",
+                              ),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        } else {
+                          _err("Error subiendo documento (${res.statusCode})");
+                        }
+                      });
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(height: 20),
               loadingDocs
                   ? const Center(child: CircularProgressIndicator())
                   : documentos.isEmpty
@@ -427,6 +860,9 @@ class _AdminSettingsPageState extends State<AdminSettingsPage>
                       children: documentos.map((doc) {
                         final nombre = doc["nombre"];
                         final fecha = doc["fecha_subida"];
+                        final usuarioId = doc["usuario_id"];
+                        final ruta = doc["ruta"];
+                        final filename = nombre;
 
                         return Container(
                           margin: const EdgeInsets.symmetric(vertical: 8),
@@ -440,8 +876,10 @@ class _AdminSettingsPageState extends State<AdminSettingsPage>
                               const Icon(
                                 Icons.description,
                                 color: Colors.blueAccent,
+                                size: 26,
                               ),
                               const SizedBox(width: 12),
+
                               Expanded(
                                 child: Text(
                                   nombre,
@@ -452,9 +890,89 @@ class _AdminSettingsPageState extends State<AdminSettingsPage>
                                   ),
                                 ),
                               ),
+
+                              const SizedBox(width: 12),
+
+                              
                               Text(
                                 fecha.toString().split("T").first,
                                 style: TextStyle(color: txt.withOpacity(.6)),
+                              ),
+
+                              const SizedBox(width: 12),
+
+                              
+                              IconButton(
+                                tooltip: "Descargar",
+                                icon: const Icon(
+                                  Icons.download_rounded,
+                                  color: Colors.green,
+                                ),
+                                onPressed: () async {
+                                  final url =
+                                      "${ApiService.baseUrl}/documentos/descargar/$usuarioId/$filename";
+
+                                  try {
+                                    final headers =
+                                        await ApiService.authHeaders();
+                                    final res = await http.get(
+                                      Uri.parse(url),
+                                      headers: headers,
+                                    );
+
+                                    if (res.statusCode != 200) {
+                                      _err(
+                                        "Error al descargar (${res.statusCode})",
+                                      );
+                                      return;
+                                    }
+
+                                    final bytes = res.bodyBytes;
+                                    if (kIsWeb) {
+                                      final blob = html.Blob([
+                                        bytes,
+                                      ], 'application/octet-stream');
+                                      final url2 = html
+                                          .Url.createObjectUrlFromBlob(blob);
+                                      final a = html.AnchorElement(href: url2)
+                                        ..setAttribute("download", filename)
+                                        ..click();
+                                      html.Url.revokeObjectUrl(url2);
+                                      return;
+                                    }
+
+                                    if (!kIsWeb && Platform.isAndroid) {
+                                      final file = File(
+                                        "/storage/emulated/0/Download/$filename",
+                                      );
+                                      await file.writeAsBytes(bytes);
+
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            "📄 Archivo guardado en Descargas",
+                                          ),
+                                          backgroundColor: Colors.green,
+                                        ),
+                                      );
+                                      return;
+                                    }
+                                  } catch (e) {
+                                    _err("Error descargando archivo: $e");
+                                  }
+                                },
+                              ),
+                              IconButton(
+                                tooltip: "Enviar a empleado",
+                                icon: const Icon(
+                                  Icons.send_rounded,
+                                  color: Colors.blueAccent,
+                                ),
+                                onPressed: () async {
+                                  _mostrarDialogoEnviar(doc);
+                                },
                               ),
                             ],
                           ),
@@ -466,6 +984,100 @@ class _AdminSettingsPageState extends State<AdminSettingsPage>
         ),
       ),
     );
+  }
+
+  void _err(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), backgroundColor: Colors.redAccent),
+    );
+  }
+
+  void _mostrarDialogoEnviar(Map<String, dynamic> documento) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        Map<String, dynamic>? seleccionado;
+
+        return AlertDialog(
+          title: const Text("Enviar documento a empleado"),
+          content: SizedBox(
+            width: 400,
+            child: DropdownButtonFormField<Map<String, dynamic>>(
+              decoration: const InputDecoration(
+                labelText: "Selecciona empleado",
+              ),
+              items: empleados.map((emp) {
+                return DropdownMenuItem(
+                  value: emp,
+                  child: Text(emp["nombre"] ?? emp["email"]),
+                );
+              }).toList(),
+              onChanged: (value) => seleccionado = value,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancelar"),
+            ),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.send_rounded, size: 18),
+              label: const Text("Enviar"),
+              onPressed: () async {
+                if (seleccionado == null) {
+                  _err("Selecciona un empleado");
+                  return;
+                }
+
+                Navigator.pop(context);
+
+                await _enviarDocumentoEmpleado(documento, seleccionado!["id"]);
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _enviarDocumentoEmpleado(
+    Map<String, dynamic> documento,
+    String empleadoId,
+  ) async {
+    try {
+      final headers = await ApiService.authHeaders();
+
+      final body = {
+        "titulo": "Nuevo documento disponible",
+        "mensaje": "Se te ha enviado el documento: ${documento["nombre"]}",
+        "usuario_id": empleadoId,
+        "tipo": "documento",
+        "archivo": documento["nombre"],
+        "origen": "admin",
+      };
+
+      final res = await http.post(
+        Uri.parse("${ApiService.baseUrl}/notificaciones/enviar"),
+        headers: {...headers, "Content-Type": "application/json"},
+        body: jsonEncode(body),
+      );
+
+      if (res.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              "📨 Documento enviado al empleado",
+              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        _err("Error enviando documento (${res.statusCode})");
+      }
+    } catch (e) {
+      _err("Error: $e");
+    }
   }
 
   @override

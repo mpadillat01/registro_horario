@@ -1,6 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:registro_horario/features/notifications/notification_services.dart';
+import 'package:registro_horario/services/api_service.dart';
 import 'package:registro_horario/services/auth_service.dart';
+import 'dart:html' as html;
 
 class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
@@ -30,8 +34,7 @@ class _NotificationsPageState extends State<NotificationsPage>
       final user = await AuthService.getCurrentUser();
       isAdmin = (user["rol"] == "admin");
 
-      _tabController ??=
-          TabController(length: isAdmin ? 2 : 1, vsync: this);
+      _tabController ??= TabController(length: isAdmin ? 2 : 1, vsync: this);
 
       final recibidasData = await NotificationsService.getNotifications();
       List<Map<String, dynamic>> enviadasData = [];
@@ -71,9 +74,7 @@ class _NotificationsPageState extends State<NotificationsPage>
 
   Widget _lista(List<Map<String, dynamic>> notifs, {bool enviadas = false}) {
     if (notifs.isEmpty) {
-      return const Center(
-        child: Text("⭐ No hay notificaciones"),
-      );
+      return const Center(child: Text("⭐ No hay notificaciones"));
     }
 
     return RefreshIndicator(
@@ -116,12 +117,72 @@ class _NotificationsPageState extends State<NotificationsPage>
                     : n["mensaje"] ?? "",
               ),
               isThreeLine: enviadas,
-              trailing: Text(
-                hora,
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: 12,
-                ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    hora,
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                  ),
+
+                  if (n["archivo"] != null &&
+                      n["archivo"].toString().isNotEmpty) ...[
+                    const SizedBox(width: 12),
+                    IconButton(
+                      icon: const Icon(
+                        Icons.download_rounded,
+                        color: Colors.blueAccent,
+                      ),
+                      onPressed: () async {
+                        final archivo = n["archivo"];
+
+                        final url =
+                            "${ApiService.baseUrl}/documentos/descargar-por-nombre/$archivo";
+
+                        try {
+                          final headers = await ApiService.authHeaders();
+                          final res = await http.get(
+                            Uri.parse(url),
+                            headers: headers,
+                          );
+
+                          if (res.statusCode != 200) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  "Error al descargar (${res.statusCode})",
+                                ),
+                                backgroundColor: Colors.redAccent,
+                              ),
+                            );
+                            return;
+                          }
+
+                          final bytes = res.bodyBytes;
+
+                          if (kIsWeb) {
+                            final blob = html.Blob([
+                              bytes,
+                            ], 'application/octet-stream');
+                            final url2 = html.Url.createObjectUrlFromBlob(blob);
+                            final a = html.AnchorElement(href: url2)
+                              ..setAttribute("download", archivo)
+                              ..click();
+                            html.Url.revokeObjectUrl(url2);
+                            return;
+                          }
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text("Error: $e"),
+                              backgroundColor: Colors.redAccent,
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ],
+                ],
               ),
             ),
           );
@@ -133,9 +194,7 @@ class _NotificationsPageState extends State<NotificationsPage>
   @override
   Widget build(BuildContext context) {
     if (loading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     final tabs = [
