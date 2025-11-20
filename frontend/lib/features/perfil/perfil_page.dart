@@ -156,19 +156,52 @@ class _PerfilPageState extends State<PerfilPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Mi perfil"),
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: Icon(
-              isDark ? Icons.light_mode : Icons.dark_mode,
-              color: colorPrincipal,
+        backgroundColor: Colors.transparent,
+        centerTitle: true,
+        titleSpacing: 0,
+
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(width: 8),
+            const Text(
+              "Mi perfil",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 20,
+                letterSpacing: -0.3,
+              ),
             ),
-            onPressed: () => context.read<ThemeProvider>().toggleTheme(),
+          ],
+        ),
+
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 10),
+            child: IconButton(
+              tooltip: "Cambiar tema",
+              icon: Icon(
+                isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+                color: colorPrincipal,
+                size: 24,
+              ),
+              onPressed: () => context.read<ThemeProvider>().toggleTheme(),
+            ),
           ),
         ],
+
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(
+            height: 1,
+            color: isDark
+                ? Colors.white.withOpacity(0.05)
+                : Colors.black.withOpacity(0.05),
+          ),
+        ),
       ),
+
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(

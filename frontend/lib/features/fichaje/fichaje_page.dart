@@ -230,22 +230,33 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
       backgroundColor: theme.scaffoldBackgroundColor,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        title: Text(
-          "Control horario",
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 18,
-            color: theme.colorScheme.onSurface,
-          ),
+        backgroundColor: Colors.transparent,
+        titleSpacing: 0,
+        centerTitle: false,
+
+        title: Row(
+          children: [
+            const SizedBox(width: 8),
+            Text(
+              "Control horario",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 20,
+                color: theme.colorScheme.onSurface,
+                letterSpacing: -0.2,
+              ),
+            ),
+          ],
         ),
+
         actions: [
           IconButton(
+            tooltip: "Cambiar tema",
             icon: Icon(
               theme.brightness == Brightness.dark
-                  ? Icons.light_mode
-                  : Icons.dark_mode,
+                  ? Icons.light_mode_rounded
+                  : Icons.dark_mode_rounded,
               color: theme.colorScheme.onSurface,
             ),
             onPressed: () => Provider.of<ThemeProvider>(
@@ -256,7 +267,7 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
           IconButton(
             tooltip: "Notificaciones",
             icon: Icon(
-              Icons.notifications_rounded,
+              Icons.notifications_active_rounded,
               color: theme.colorScheme.onSurface,
             ),
             onPressed: () => Navigator.push(
@@ -267,11 +278,13 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
           Padding(
             padding: const EdgeInsets.only(right: 14),
             child: PopupMenuButton<String>(
-              offset: const Offset(0, 40),
+              offset: const Offset(0, 46),
               color: theme.colorScheme.surface,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
               ),
+              elevation: 6,
+
               onSelected: (value) async {
                 if (value == "perfil") {
                   Navigator.pushNamed(context, "/perfil");
@@ -292,24 +305,31 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
                   );
                 }
               },
+
               itemBuilder: (_) => [
                 PopupMenuItem(
                   value: "perfil",
                   child: Row(
-                    children: const [
-                      Icon(Icons.person),
-                      SizedBox(width: 10),
-                      Text("Perfil"),
+                    children: [
+                      Icon(
+                        Icons.person_rounded,
+                        color: theme.colorScheme.primary,
+                      ),
+                      const SizedBox(width: 12),
+                      const Text("Perfil"),
                     ],
                   ),
                 ),
                 PopupMenuItem(
                   value: "detalle",
                   child: Row(
-                    children: const [
-                      Icon(Icons.access_time),
-                      SizedBox(width: 10),
-                      Text("Detalles"),
+                    children: [
+                      Icon(
+                        Icons.access_time_rounded,
+                        color: theme.colorScheme.primary,
+                      ),
+                      const SizedBox(width: 12),
+                      const Text("Detalles"),
                     ],
                   ),
                 ),
@@ -318,8 +338,8 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
                   value: "logout",
                   child: Row(
                     children: const [
-                      Icon(Icons.logout, color: Colors.redAccent),
-                      SizedBox(width: 10),
+                      Icon(Icons.logout_rounded, color: Colors.redAccent),
+                      SizedBox(width: 12),
                       Text(
                         "Cerrar sesión",
                         style: TextStyle(color: Colors.redAccent),
@@ -330,12 +350,13 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
               ],
               child: CircleAvatar(
                 radius: 18,
-                backgroundColor: Colors.white10,
+                backgroundColor: theme.colorScheme.primary.withOpacity(0.15),
                 child: Text(
                   (userData?["nombre"]?[0]?.toUpperCase() ?? "U"),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
+                    color: theme.colorScheme.primary,
                   ),
                 ),
               ),
@@ -343,6 +364,7 @@ class _FichajePageState extends State<FichajePage> with WidgetsBindingObserver {
           ),
         ],
       ),
+
       body: Stack(
         children: [
           const _AuroraBackground(),
