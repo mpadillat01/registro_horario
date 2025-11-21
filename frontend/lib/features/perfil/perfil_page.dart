@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:table_calendar/table_calendar.dart';
@@ -155,49 +156,70 @@ class _PerfilPageState extends State<PerfilPage> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-        centerTitle: true,
-        titleSpacing: 0,
-
-        title: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const SizedBox(width: 8),
-            const Text(
-              "Mi perfil",
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 20,
-                letterSpacing: -0.3,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(70),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.transparent,
+            border: Border(
+              bottom: BorderSide(
+                color: isDark
+                    ? Colors.white.withOpacity(.08)
+                    : Colors.black.withOpacity(.06),
+                width: 1,
               ),
-            ),
-          ],
-        ),
-
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 10),
-            child: IconButton(
-              tooltip: "Cambiar tema",
-              icon: Icon(
-                isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-                color: colorPrincipal,
-                size: 24,
-              ),
-              onPressed: () => context.read<ThemeProvider>().toggleTheme(),
             ),
           ),
-        ],
+          child: ClipRRect(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              child: AppBar(
+                elevation: 0,
+                backgroundColor: Colors.transparent,
+                centerTitle: true,
+                automaticallyImplyLeading: false,
 
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(
-            height: 1,
-            color: isDark
-                ? Colors.white.withOpacity(0.05)
-                : Colors.black.withOpacity(0.05),
+                leading: Padding(
+                  padding: const EdgeInsets.only(left: 6),
+                  child: IconButton(
+                    icon: Icon(
+                      Icons.arrow_back_rounded,
+                      size: 26,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withOpacity(.9),
+                    ),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ),
+
+                title: Text(
+                  "Mi perfil",
+                  style: GoogleFonts.poppins(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.5,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+
+                actions: [
+                  IconButton(
+                    tooltip: "Cambiar tema",
+                    icon: Icon(
+                      isDark
+                          ? Icons.light_mode_rounded
+                          : Icons.dark_mode_rounded,
+                      size: 26,
+                      color: colorPrincipal,
+                    ),
+                    onPressed: () =>
+                        context.read<ThemeProvider>().toggleTheme(),
+                  ),
+                  const SizedBox(width: 12),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -378,16 +400,16 @@ class _PerfilPageState extends State<PerfilPage> {
         Color resumenColor;
 
         if (esFestivo) {
-          resumen = "🎉 Día festivo en España";
+          resumen = " Día festivo en España";
           resumenColor = Colors.redAccent;
         } else if (eventosDelDia.isEmpty) {
-          resumen = "🚫 No hay fichajes registrados";
+          resumen = " No hay fichajes registrados";
           resumenColor = Colors.grey;
         } else if (duracionSel.inMinutes > 0) {
-          resumen = "💼 Has trabajado ${horasSel}h ${minutosSel}m";
+          resumen = " Has trabajado ${horasSel}h ${minutosSel}m";
           resumenColor = colorPrincipal;
         } else {
-          resumen = "📋 Fichajes sin duración";
+          resumen = " Fichajes sin duración";
           resumenColor = Colors.orangeAccent;
         }
 
@@ -411,12 +433,14 @@ class _PerfilPageState extends State<PerfilPage> {
               ),
               child: TableCalendar(
                 locale: 'es_ES',
+                startingDayOfWeek: StartingDayOfWeek.monday,
                 firstDay: DateTime.utc(2024, 1, 1),
                 lastDay: DateTime.utc(2030, 12, 31),
                 focusedDay: diaSeleccionado,
                 selectedDayPredicate: (day) =>
                     FichajeUtils.isSameDay(day, diaSeleccionado),
                 onDaySelected: (selectedDay, _) => actualizarDia(selectedDay),
+
                 calendarStyle: CalendarStyle(
                   todayDecoration: BoxDecoration(
                     color: colorPrincipal.withOpacity(.3),
@@ -426,25 +450,109 @@ class _PerfilPageState extends State<PerfilPage> {
                     color: colorPrincipal,
                     shape: BoxShape.circle,
                   ),
+                  markerDecoration: const BoxDecoration(shape: BoxShape.circle),
+                ),
+
+                // ⭐⭐ NUEVO: PINTAR DÍAS FESTIVOS ⭐⭐
+                calendarBuilders: CalendarBuilders(
+                  defaultBuilder: (context, day, focusedDay) {
+                    final esFestivo = festivos.any(
+                      (f) => FichajeUtils.isSameDay(f, day),
+                    );
+
+                    if (!esFestivo) return null;
+
+                    // 🎉 ESTILO VISUAL PARA FESTIVOS (rojo suave + texto rojo)
+                    return Container(
+                      margin: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: Colors.redAccent.withOpacity(.15),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.redAccent.withOpacity(.5),
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        "${day.day}",
+                        style: const TextStyle(
+                          color: Colors.redAccent,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
 
             const SizedBox(height: 10),
 
-            Center(
-              child: Text(
-                resumen,
-                style: TextStyle(
-                  color: resumenColor,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
+            Column(
+              children: [
+                const SizedBox(height: 10),
+                Text(
+                  resumen,
+                  style: TextStyle(
+                    color: resumenColor,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
                 ),
-              ),
+                const SizedBox(height: 20),
+
+                _buildHistorialDiaSeleccionado(
+                  dark,
+                  diaSeleccionado,
+                  eventosDelDia,
+                ),
+              ],
             ),
           ],
         );
       },
+    );
+  }
+
+  Widget _buildHistorialDiaSeleccionado(
+    bool dark,
+    DateTime diaSeleccionado,
+    List<Map<String, dynamic>> eventosDelDia,
+  ) {
+    final txt = dark ? Colors.white70 : Colors.black87;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 20),
+        Text(
+          "Fichajes del día",
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 19,
+            color: txt,
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        if (eventosDelDia.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              color: dark ? Colors.white10 : Colors.grey.shade200,
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline, color: txt),
+                const SizedBox(width: 10),
+                Text("No hay fichajes este día", style: TextStyle(color: txt)),
+              ],
+            ),
+          ),
+
+        ...eventosDelDia.map((e) => _buildEventoFila(e, dark)),
+      ],
     );
   }
 
@@ -477,85 +585,111 @@ class _PerfilPageState extends State<PerfilPage> {
           "Historial de fichajes",
           style: TextStyle(
             fontWeight: FontWeight.bold,
-            fontSize: 18,
+            fontSize: 20,
             color: txt,
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 14),
 
-        ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: dias.length,
-          itemBuilder: (context, i) {
-            final diaKey = dias[i];
-            final eventos = agrupado[diaKey]!;
-            final fecha = DateTime.parse(diaKey);
+        ...dias.map((diaKey) {
+          final eventos = agrupado[diaKey]!;
+          final fecha = DateTime.parse(diaKey);
+          final fechaTexto = DateFormat("EEEE d 'de' MMMM", "es_ES")
+              .format(fecha)
+              .replaceFirst(
+                DateFormat("EEEE", "es_ES").format(fecha)[0],
+                DateFormat("EEEE", "es_ES").format(fecha)[0].toUpperCase(),
+              );
 
-            return Container(
-              margin: const EdgeInsets.symmetric(vertical: 8),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(18),
-                color: dark ? Colors.white10 : Colors.black.withOpacity(.05),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: eventos.map((e) {
-                    final tipo = e["tipo"].toString().toLowerCase();
-                    final dt = e["dt"] as DateTime;
-
-                    final color =
-                        {
-                          "entrada": Colors.greenAccent,
-                          "salida": Colors.redAccent,
-                          "inicio_pausa": Colors.orangeAccent,
-                          "fin_pausa": Colors.cyanAccent,
-                        }[tipo] ??
-                        Colors.grey;
-
-                    return Container(
-                      margin: const EdgeInsets.symmetric(vertical: 4),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(10),
-                        color: dark ? Colors.white12 : Colors.black12,
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.access_time_rounded,
-                            color: color,
-                            size: 18,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              tipo.toUpperCase(),
-                              style: TextStyle(
-                                color: color,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          Text(
-                            DateFormat("HH:mm").format(dt),
-                            style: TextStyle(color: txt),
-                          ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
+          return Container(
+            margin: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              color: dark ? Colors.white10 : Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
                 ),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const SizedBox(width: 10),
+                      Text(
+                        fechaTexto,
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: txt,
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 12),
+                  Divider(color: txt.withOpacity(.15)),
+
+                  const SizedBox(height: 10),
+
+                  ...eventos.map((e) => _buildEventoFila(e, dark)),
+                ],
               ),
-            );
-          },
-        ),
+            ),
+          );
+        }),
       ],
+    );
+  }
+
+  Widget _buildEventoFila(Map<String, dynamic> e, bool dark) {
+    final tipo = e["tipo"].toString().toLowerCase();
+    final dt = e["dt"] as DateTime;
+
+    final color =
+        {
+          "entrada": Colors.greenAccent,
+          "salida": Colors.redAccent,
+          "inicio_pausa": Colors.orangeAccent,
+          "fin_pausa": Colors.cyanAccent,
+        }[tipo] ??
+        Colors.grey;
+
+    final txt = dark ? Colors.white70 : Colors.black87;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        color: dark ? Colors.white12 : Colors.black.withOpacity(.05),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.access_time_rounded, color: color, size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              tipo.toUpperCase(),
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+              ),
+            ),
+          ),
+          Text(
+            DateFormat("HH:mm").format(dt),
+            style: TextStyle(color: txt, fontSize: 15),
+          ),
+        ],
+      ),
     );
   }
 

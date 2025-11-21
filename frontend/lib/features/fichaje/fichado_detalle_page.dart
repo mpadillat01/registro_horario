@@ -101,13 +101,13 @@ class _FichadoDetallePageState extends State<FichadoDetallePage>
   Color estadoColor(String e) {
     switch (e) {
       case "entrada":
-        return const Color(0xFF4B7BFF); 
+        return const Color(0xFF4B7BFF);
       case "inicio_pausa":
-        return const Color(0xFFFFC04D); 
+        return const Color(0xFFFFC04D);
       case "salida":
-        return const Color(0xFFFF5C5C); 
+        return const Color(0xFFFF5C5C);
       default:
-        return const Color(0xFF9CA3AF); 
+        return const Color(0xFF9CA3AF);
     }
   }
 
@@ -365,68 +365,178 @@ class _FichadoDetallePageState extends State<FichadoDetallePage>
   }
 
   List<Widget> _buildHistorialDiario() {
-    final dias = <DateTime>{};
-    for (final e in historial) {
-      final dt = e["dt"] as DateTime;
-      dias.add(DateTime(dt.year, dt.month, dt.day));
+    if (historial.isEmpty) {
+      return [
+        Center(
+          child: Text(
+            "Sin registros",
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(.6),
+              fontSize: 16,
+            ),
+          ),
+        ),
+      ];
     }
 
-    final diasOrdenados = dias.toList()..sort((a, b) => b.compareTo(a));
+    // 1️⃣ Agrupar por semana (usando el lunes como clave)
+    final Map<DateTime, List<Map<String, dynamic>>> semanas = {};
 
-    return diasOrdenados.map((d) {
-      final duracion = FichajeUtils.calcularDuracionDia(historial, d);
-      final color = duracion.inHours >= 8
-    ? const Color(0xFF4CAF50) 
-    : const Color(0xFFFFC04D); 
+    for (var e in historial) {
+      final dt = e["dt"] as DateTime;
 
+      // Lunes de esa semana
+      final inicioSemana = DateTime(
+        dt.year,
+        dt.month,
+        dt.day,
+      ).subtract(Duration(days: dt.weekday - 1));
 
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: _glass(
-          context,
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius: 20,
-                backgroundColor: color.withOpacity(.15),
-                child: Text(
-                  DateFormat('EE', 'es_ES').format(d).toUpperCase(),
-                  style: TextStyle(color: color, fontWeight: FontWeight.bold),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+      final key = DateTime(
+        inicioSemana.year,
+        inicioSemana.month,
+        inicioSemana.day,
+      );
+
+      semanas.putIfAbsent(key, () => []).add(e);
+    }
+
+    // 2️⃣ Ordenar semanas de más reciente a más antigua
+    final semanasOrdenadas = semanas.keys.toList()
+      ..sort((a, b) => b.compareTo(a));
+
+    final List<Widget> widgets = [];
+
+    for (final inicioSemana in semanasOrdenadas) {
+      final eventosSemana = semanas[inicioSemana]!;
+      final finSemana = inicioSemana.add(const Duration(days: 6));
+
+      // 3️⃣ Calcular total semanal
+      final diasSemana = <DateTime>{};
+      for (var e in eventosSemana) {
+        final dt = e["dt"] as DateTime;
+        diasSemana.add(DateTime(dt.year, dt.month, dt.day));
+      }
+
+      Duration totalSemana = Duration.zero;
+      for (var d in diasSemana) {
+        totalSemana += FichajeUtils.calcularDuracionDia(historial, d);
+      }
+
+      final objetivo = const Duration(hours: 40);
+      final progreso = (totalSemana.inSeconds / objetivo.inSeconds).clamp(
+        0.0,
+        1.0,
+      );
+
+      // 4️⃣ Ordenar días dentro de la semana
+      final diasOrdenados = diasSemana.toList()..sort((a, b) => a.compareTo(b));
+
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 20),
+          child: _glass(
+            context,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 🟦 Cabecera semana
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      DateFormat('dd MMM yyyy', 'es_ES').format(d),
+                      "Semana ${DateFormat("dd/MM").format(inicioSemana)} — ${DateFormat("dd/MM").format(finSemana)}",
                       style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
                         color: Theme.of(
                           context,
-                        ).colorScheme.onSurface.withOpacity(.8),
+                        ).colorScheme.onSurface.withOpacity(.9),
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    LinearProgressIndicator(
-                      value: (duracion.inHours / 8).clamp(0, 1),
-                      minHeight: 8,
-                      backgroundColor: Colors.white12,
-                      valueColor: AlwaysStoppedAnimation(color.withOpacity(.8)),
+                    Text(
+                      fmtHM(totalSemana),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blueAccent,
+                      ),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                fmtHM(duracion),
-                style: TextStyle(color: color, fontWeight: FontWeight.bold),
-              ),
-            ],
+
+                const SizedBox(height: 10),
+
+                // Barra de progreso semanal
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: LinearProgressIndicator(
+                    minHeight: 8,
+                    value: progreso,
+                    backgroundColor: Colors.white12,
+                    valueColor: AlwaysStoppedAnimation(
+                      progreso >= 1 ? Colors.greenAccent : Colors.blueAccent,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // 🗓️ Detalle día por día
+                ...diasOrdenados.map((d) {
+                  final duracion = FichajeUtils.calcularDuracionDia(
+                    historial,
+                    d,
+                  );
+                  final color = duracion.inHours >= 8
+                      ? Colors.greenAccent
+                      : Colors.orangeAccent;
+
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 18,
+                          backgroundColor: color.withOpacity(.15),
+                          child: Text(
+                            DateFormat('EE', 'es_ES').format(d).toUpperCase(),
+                            style: TextStyle(
+                              color: color,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            DateFormat("d MMM", "es_ES").format(d),
+                            style: TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurface.withOpacity(.8),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          fmtHM(duracion),
+                          style: TextStyle(
+                            color: color,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ],
+            ),
           ),
         ),
       );
-    }).toList();
+    }
+
+    return widgets;
   }
 }
 
